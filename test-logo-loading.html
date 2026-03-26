@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Logo Loading Test</title>
+</head>
+<body>
+    <h1>Logo Loading Test</h1>
+    <p>This page tests if the logo can be loaded from the public folder.</p>
+    <div id="result"></div>
+    <img id="logo" style="max-width: 200px; border: 2px solid red;" />
+    
+    <script>
+        const logoPath = '/Screenshot 2026-01-15 at 10.58.35 PM.png';
+        const encodedPath = encodeURI(logoPath);
+        
+        console.log('Testing logo loading...');
+        console.log('Original path:', logoPath);
+        console.log('Encoded path:', encodedPath);
+        
+        const img = document.getElementById('logo');
+        const result = document.getElementById('result');
+        
+        img.onload = function() {
+            console.log('✅ Logo loaded successfully!');
+            console.log('Dimensions:', img.width, 'x', img.height);
+            result.innerHTML = '<p style="color: green;">✅ Logo loaded successfully! Dimensions: ' + img.width + ' x ' + img.height + 'px</p>';
+        };
+        
+        img.onerror = function() {
+            console.error('❌ Logo failed to load!');
+            result.innerHTML = '<p style="color: red;">❌ Logo failed to load! Check the file path and filename.</p>';
+        };
+        
+        img.src = encodedPath;
+    </script>
+</body>
+</html>

@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Analytics Function</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 40px;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        
+        .step {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .step h2 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+        
+        .input-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 500;
+            font-size: 14px;
+        }
+        
+        input[type="text"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+        }
+        
+        .result {
+            margin-top: 20px;
+            padding: 20px;
+            border-radius: 8px;
+            display: none;
+        }
+        
+        .result.show {
+            display: block;
+        }
+        
+        .result.success {
+            background: #d4edda;
+            border-left: 4px solid #28a745;
+        }
+        
+        .result.error {
+            background: #f8d7da;
+            border-left: 4px solid #dc3545;
+        }
+        
+        .result.info {
+            background: #e7f3ff;
+            border-left: 4px solid #2196F3;
+        }
+        
+        .result pre {
+            background: #f1f1f1;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            margin-top: 10px;
+            font-size: 12px;
+        }
+        
+        .checklist {
+            list-style: none;
+            padding: 0;
+        }
+        
+        .checklist li {
+            padding: 8px 0;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
+        .checklist li:last-child {
+            border-bottom: none;
+        }
+        
+        .status {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        
+        .status.pending {
+            background: #ffc107;
+        }
+        
+        .status.success {
+            background: #28a745;
+        }
+        
+        .status.error {
+            background: #dc3545;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Analytics Function Diagnostic Tool</h1>
+        <p class="subtitle">Test your fetch-analytics edge function and diagnose issues</p>
+        
+        <div class="step">
+            <h2>Step 1: Enter Content ID</h2>
+            <div class="input-group">
+                <label for="contentId">Content ID (from your published content):</label>
+                <input type="text" id="contentId" placeholder="e.g., 123e4567-e89b-12d3-a456-426614174000">
+            </div>
+            <button onclick="testFunction()">Test Analytics Function</button>
+        </div>
+        
+        <div id="result" class="result"></div>
+        
+        <div class="step" style="margin-top: 30px;">
+            <h2>📋 Pre-Flight Checklist</h2>
+            <p style="color: #666; margin-bottom: 15px;">Before testing, make sure:</p>
+            <ul class="checklist">
+                <li><span class="status pending"></span> Function is deployed (Supabase Dashboard → Edge Functions)</li>
+                <li><span class="status pending"></span> Secrets are added (Settings → Edge Functions → Secrets)</li>
+                <li><span class="status pending"></span> Content is published (has social_post_id)</li>
+                <li><span class="status pending"></span> Tokens are valid (not expired)</li>
+            </ul>
+        </div>
+    </div>
+    
+    <script>
+        // Get Supabase client from window (if available)
+        // Otherwise, user needs to paste their credentials
+        
+        async function testFunction() {
+            const contentId = document.getElementById('contentId').value.trim();
+            const resultDiv = document.getElementById('result');
+            
+            if (!contentId) {
+                showResult(resultDiv, 'error', 'Please enter a Content ID');
+                return;
+            }
+            
+            resultDiv.className = 'result show info';
+            resultDiv.innerHTML = '<h3>🔄 Testing...</h3><p>Calling fetch-analytics function...</p>';
+            
+            try {
+                // Try to use Supabase from window (if available in your app)
+                let supabase;
+                
+                if (window.supabase) {
+                    supabase = window.supabase;
+                } else if (window.__SUPABASE_CLIENT__) {
+                    supabase = window.__SUPABASE_CLIENT__;
+                } else {
+                    // Prompt user for credentials
+                    const supabaseUrl = prompt('Enter your Supabase URL (e.g., https://xxx.supabase.co):');
+                    const supabaseKey = prompt('Enter your Supabase Anon Key:');
+                    
+                    if (!supabaseUrl || !supabaseKey) {
+                        showResult(resultDiv, 'error', 'Supabase credentials are required. Please run this from your app or provide credentials.');
+                        return;
+                    }
+                    
+                    // Load Supabase client dynamically
+                    const script = document.createElement('script');
+                    script.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
+                    script.onload = async () => {
+                        const { createClient } = window.supabase;
+                        supabase = createClient(supabaseUrl, supabaseKey);
+                        await runTest(supabase, contentId, resultDiv);
+                    };
+                    document.head.appendChild(script);
+                    return;
+                }
+                
+                await runTest(supabase, contentId, resultDiv);
+                
+            } catch (error) {
+                showResult(resultDiv, 'error', `Error: ${error.message}`);
+            }
+        }
+        
+        async function runTest(supabase, contentId, resultDiv) {
+            try {
+                resultDiv.innerHTML = '<h3>🔄 Testing...</h3><p>Invoking fetch-analytics function...</p>';
+                
+                const { data, error } = await supabase.functions.invoke('fetch-analytics', {
+                    body: { contentId }
+                });
+                
+                if (error) {
+                    showResult(resultDiv, 'error', 
+                        `<h3>❌ Function Invocation Error</h3>
+                        <p><strong>Error:</strong> ${error.message || JSON.stringify(error)}</p>
+                        <h4 style="margin-top: 15px;">Possible Causes:</h4>
+                        <ul style="margin-left: 20px; margin-top: 10px;">
+                            <li>Function not deployed - Check Supabase Dashboard → Edge Functions</li>
+                            <li>Function name incorrect - Should be "fetch-analytics"</li>
+                            <li>Network error - Check your internet connection</li>
+                            <li>Authentication error - Make sure you're logged in</li>
+                        </ul>
+                        <pre>${JSON.stringify(error, null, 2)}</pre>`
+                    );
+                    return;
+                }
+                
+                if (data?.success) {
+                    showResult(resultDiv, 'success',
+                        `<h3>✅ Success!</h3>
+                        <p>Analytics fetched successfully!</p>
+                        <h4 style="margin-top: 15px;">Analytics Data:</h4>
+                        <ul style="margin-left: 20px; margin-top: 10px;">
+                            <li><strong>Likes:</strong> ${data.analytics.likes}</li>
+                            <li><strong>Comments:</strong> ${data.analytics.comments}</li>
+                            <li><strong>Shares:</strong> ${data.analytics.shares}</li>
+                            <li><strong>Reach:</strong> ${data.analytics.reach}</li>
+                        </ul>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>`
+                    );
+                } else if (data?.error) {
+                    showResult(resultDiv, 'error',
+                        `<h3>❌ Function Returned Error</h3>
+                        <p><strong>Error:</strong> ${data.error}</p>
+                        <h4 style="margin-top: 15px;">Common Issues:</h4>
+                        <ul style="margin-left: 20px; margin-top: 10px;">
+                            <li><strong>"Token not configured"</strong> → Add required token to Supabase Secrets</li>
+                            <li><strong>"Content not published"</strong> → Publish the content first</li>
+                            <li><strong>"Token expired"</strong> → Get a new token and update Supabase Secrets</li>
+                            <li><strong>"Invalid token"</strong> → Verify token is correct</li>
+                        </ul>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>`
+                    );
+                } else {
+                    showResult(resultDiv, 'error',
+                        `<h3>⚠️ Unexpected Response</h3>
+                        <p>The function returned an unexpected response format.</p>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>`
+                    );
+                }
+            } catch (error) {
+                showResult(resultDiv, 'error',
+                    `<h3>❌ Unexpected Error</h3>
+                    <p><strong>Error:</strong> ${error.message}</p>
+                    <pre>${JSON.stringify(error, null, 2)}</pre>`
+                );
+            }
+        }
+        
+        function showResult(div, type, content) {
+            div.className = `result show ${type}`;
+            div.innerHTML = content;
+        }
+        
+        // Allow Enter key
+        document.getElementById('contentId').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                testFunction();
+            }
+        });
+    </script>
+</body>
+</html>

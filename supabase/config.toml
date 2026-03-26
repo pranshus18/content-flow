@@ -1,0 +1,15 @@
+project_id = "uzmjedaumxbqkmpvvpnh"
+
+[functions.generate-caption]
+verify_jwt = false
+
+[functions.publish-social]
+verify_jwt = false
+
+[functions.publish-content]
+verify_jwt = false
+
+# Cron job to automatically publish scheduled content every minute
+# This checks for posts that should be published and publishes them
+# Note: You need to configure this in Supabase Dashboard → Edge Functions → Cron Jobs
+# Schedule: * * * * * (every minute) or */5 * * * * (every 5 minutes)

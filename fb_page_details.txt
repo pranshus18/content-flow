@@ -1,0 +1,94 @@
+==== Query
+  curl -i -X POST \
+   "https://graph.facebook.com/v24.0/oauth/access_token?domain=FB&grant_type=fb_exchange_token&client_id=875964825144424&client_secret=b30833d4b100675e3197c3e987ea4de2&fb_exchange_token=<access token sanitized>&access_token=EAAMcr3Q9DGgBQmU8hvSSZAVk0vJxBGTeAiiz6ku1zrW9jdOBfPA947DLyK6ENLeqxHhmBAF3g619CUy9dgxUeXUqZCQ81P1rDlJfykPEGpHAtd4qZCR7ZC466MBGml8RDBJNjzebpodSWfZCgM5s6dgnGIW6HqWlkUhZCwrZCsKAxV28VpjqmpqGBeah0tARBu8BZCJIjA1KSH4nJfrtSlElGEDjpny1IqhqoNsTVz7F"
+==== Access Token Info
+  {
+    "perms": [
+      "pages_show_list",
+      "business_management",
+      "pages_read_engagement",
+      "pages_manage_posts",
+      "public_profile"
+    ],
+    "page_id": 981529221708901,
+    "user_id": "122100139563224074",
+    "app_id": 875964825144424
+  }
+==== Parameters
+- Query Parameters
+
+
+  {}
+- POST Parameters
+
+
+  {
+    "domain": "FB",
+    "grant_type": "fb_exchange_token",
+    "client_id": "875964825144424",
+    "client_secret": "b30833d4b100675e3197c3e987ea4de2",
+    "fb_exchange_token": "EAAMcr3Q9DGgBQmU8hvSSZAVk0vJxBGTeAiiz6ku1zrW9jdOBfPA947DLyK6ENLeqxHhmBAF3g619CUy9dgxUeXUqZCQ81P1rDlJfykPEGpHAtd4qZCR7ZC466MBGml8RDBJNjzebpodSWfZCgM5s6dgnGIW6HqWlkUhZCwrZCsKAxV28VpjqmpqGBeah0tARBu8BZCJIjA1KSH4nJfrtSlElGEDjpny1IqhqoNsTVz7F"
+  }
+==== Response
+  {
+    "access_token": "EAAMcr3Q9DGgBQpfH4HsBEOKZA1VsO9pKrWZBZCEfNHq7OhTF51MIxSR7RdtxinNP8sNA8ZCvrSZB8HCAX3icGi91D0qQg1HfHWiY9NcBZAK4YxfiepPt3T5fFHIFdGeTQd2nKJlQFGqXH9gItpJCj2iIiPDJjCmOqY4VULytgDHjiRwfVnigDihOw7QpieChc4H0Kx",
+    "token_type": "bearer",
+    "expires_in": 5183558
+  }
+==== Debug Information from Graph API Explorer
+- https://developers.facebook.com/tools/explorer/875964825144424/?domain=FB&method=POST&path=oauth%2Faccess_token&version=v24.0&grant_type=fb_exchange_token&client_id=875964825144424&client_secret=b30833d4b100675e3197c3e987ea4de2&fb_exchange_token=EAAMcr3Q9DGgBQmU8hvSSZAVk0vJxBGTeAiiz6ku1zrW9jdOBfPA947DLyK6ENLeqxHhmBAF3g619CUy9dgxUeXUqZCQ81P1rDlJfykPEGpHAtd4qZCR7ZC466MBGml8RDBJNjzebpodSWfZCgM5s6dgnGIW6HqWlkUhZCwrZCsKAxV28VpjqmpqGBeah0tARBu8BZCJIjA1KSH4nJfrtSlElGEDjpny1IqhqoNsTVz7F
+
+
+
+voice over integration recording the text
+
+
+
+new 
+
+{
+  "data": [
+    {
+      "access_token": "EAFzfqq6tsO4BQltBh2VwBZCEEJUMWj4TALEFFHVidw1cSLwaknV6VovrrVermdjZC7eypCTyEmSfAbiDeSn2C1t2cuesCIhoCLSLyCNZCvYbtDD8hkAUfSxZAKKXipuS2ZCUKnz7rEv5O2XnXN4aI5A5dVj3Ssr197xutCsHrnZBeNtyagDKVKiuTBSuwAQGSdxtOv4Mcxog904ySU2XwXTZCtDyU4kHdhZAfa5b4ah8",
+      "category": "Business",
+      "category_list": [
+        {
+          "id": "802560142464893",
+          "name": "Business"
+        }
+      ],
+      "name": "Test2",
+      "id": "1054603217725405",
+      "tasks": [
+        "ADVERTISE",
+        "ANALYZE",
+        "CREATE_CONTENT",
+        "MESSAGING",
+        "MODERATE",
+        "MANAGE"
+      ]
+    }
+  ],
+  "paging": {
+    "cursors": {
+      "before": "QVFIU1pzTkhCekJIbTdfWkdGX29RV2RlbUZA1VFdQcnZA0M3pYVU9qaE4zSkVVSjJTeVl1ZA3pXTTU0QnZArcTQtTnVRcGpPVlY3djBla3RNSTUxbVVvY1dXVFN3",
+      "after": "QVFIU1pzTkhCekJIbTdfWkdGX29RV2RlbUZA1VFdQcnZA0M3pYVU9qaE4zSkVVSjJTeVl1ZA3pXTTU0QnZArcTQtTnVRcGpPVlY3djBla3RNSTUxbVVvY1dXVFN3"
+    }
+  }
+}
+
+
+long lived
+
+{
+  "access_token": "EAFzfqq6tsO4BQiliY5kH5pdg1VeiwEcuoIX1IhSYPpZCHBrbtyPAH2VBcZAgwOweIWE3iwSygBJGjpHyd8LGMNSSBWjiA9BGn9djMZA8DEbR8Epkd5fQ8547hSuRMDZCZAHVIMxYu7cS2UuF8ovBK4P50xLO96MxFzk4sg1E578I4nZBKGn0ryBDFdRuFRVD2LKHZAjo55g",
+  "token_type": "bearer",
+  "expires_in": 5184000
+}
+
+{
+  "instagram_business_account": {
+    "id": "17841479735947096"
+  },
+  "id": "1054603217725405"
+}

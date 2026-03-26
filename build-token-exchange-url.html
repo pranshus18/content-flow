@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Token Exchange URL Builder</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 40px;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        
+        .step {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .step h2 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 20px;
+        }
+        
+        .input-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 500;
+            font-size: 14px;
+        }
+        
+        input[type="text"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+            margin-top: 10px;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+        }
+        
+        .url-display {
+            background: #f1f1f1;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            word-break: break-all;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            border: 2px solid #e0e0e0;
+        }
+        
+        .copy-btn {
+            background: #28a745;
+            margin-top: 10px;
+        }
+        
+        .copy-btn:hover {
+            background: #218838;
+        }
+        
+        .info-box {
+            background: #e7f3ff;
+            border-left: 4px solid #2196F3;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+        
+        .instructions {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 20px;
+            font-size: 14px;
+        }
+        
+        .instructions ol {
+            margin-left: 20px;
+            margin-top: 10px;
+        }
+        
+        .instructions li {
+            margin-bottom: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔗 Token Exchange URL Builder</h1>
+        <p class="subtitle">Build the URL to exchange your token - No parameters needed in Graph API Explorer!</p>
+        
+        <div class="info-box">
+            <strong>💡 Tip:</strong> If you can't add parameters in Graph API Explorer, this tool builds the complete URL for you. Just paste it in your browser!
+        </div>
+        
+        <div class="step">
+            <h2>Step 1: Enter Your Current Token</h2>
+            <div class="input-group">
+                <label for="currentToken">Your Current Facebook/Instagram Token:</label>
+                <input type="text" id="currentToken" placeholder="EAAUktfit6a0BO...">
+            </div>
+            <button onclick="buildURL()">Build Exchange URL</button>
+        </div>
+        
+        <div id="urlResult" style="display: none;">
+            <div class="step">
+                <h2>Step 2: Your Exchange URL</h2>
+                <div class="url-display" id="exchangeURL"></div>
+                <button class="copy-btn" onclick="copyURL()">📋 Copy URL</button>
+            </div>
+            
+            <div class="instructions">
+                <strong>📝 How to Use This URL:</strong>
+                <ol>
+                    <li><strong>Option A (Easiest):</strong> Copy the URL above, open a new browser tab, paste it, and press Enter. You'll see the JSON response with your new token.</li>
+                    <li><strong>Option B:</strong> Copy the URL and paste it in Graph API Explorer's query box, set method to POST, and click Submit.</li>
+                    <li><strong>Option C:</strong> Use this URL in any HTTP client (Postman, curl, etc.)</li>
+                </ol>
+                <p style="margin-top: 10px;"><strong>✅ After you get the response:</strong> Look for <code>"access_token"</code> in the JSON response and copy that value. That's your new long-lived token!</p>
+            </div>
+        </div>
+        
+        <div class="step" style="margin-top: 30px;">
+            <h2>🔧 Pre-filled Credentials</h2>
+            <p style="color: #666; font-size: 14px;">
+                <strong>App ID:</strong> 875964825144424<br>
+                <strong>App Secret:</strong> b30833d4b100675e3197c3e987ea4de2<br>
+                <strong>Grant Type:</strong> fb_exchange_token
+            </p>
+            <p style="margin-top: 10px; color: #666; font-size: 12px;">
+                These are already included in the URL above, so you don't need to add them manually.
+            </p>
+        </div>
+    </div>
+    
+    <script>
+        const APP_ID = '875964825144424';
+        const APP_SECRET = 'b30833d4b100675e3197c3e987ea4de2';
+        const GRANT_TYPE = 'fb_exchange_token';
+        const API_VERSION = 'v24.0';
+        
+        function buildURL() {
+            const currentToken = document.getElementById('currentToken').value.trim();
+            
+            if (!currentToken) {
+                alert('Please enter your current token first!');
+                return;
+            }
+            
+            // Build the URL with all parameters
+            const baseURL = `https://graph.facebook.com/${API_VERSION}/oauth/access_token`;
+            const params = new URLSearchParams({
+                grant_type: GRANT_TYPE,
+                client_id: APP_ID,
+                client_secret: APP_SECRET,
+                fb_exchange_token: currentToken
+            });
+            
+            const fullURL = `${baseURL}?${params.toString()}`;
+            
+            // Display the URL
+            document.getElementById('exchangeURL').textContent = fullURL;
+            document.getElementById('urlResult').style.display = 'block';
+            
+            // Scroll to result
+            document.getElementById('urlResult').scrollIntoView({ behavior: 'smooth' });
+        }
+        
+        function copyURL() {
+            const urlText = document.getElementById('exchangeURL').textContent;
+            
+            // Copy to clipboard
+            navigator.clipboard.writeText(urlText).then(() => {
+                const btn = event.target;
+                const originalText = btn.textContent;
+                btn.textContent = '✅ Copied!';
+                btn.style.background = '#28a745';
+                
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.style.background = '#28a745';
+                }, 2000);
+            }).catch(err => {
+                // Fallback for older browsers
+                const textArea = document.createElement('textarea');
+                textArea.value = urlText;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                
+                const btn = event.target;
+                const originalText = btn.textContent;
+                btn.textContent = '✅ Copied!';
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                }, 2000);
+            });
+        }
+        
+        // Allow Enter key
+        document.getElementById('currentToken').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                buildURL();
+            }
+        });
+    </script>
+</body>
+</html>

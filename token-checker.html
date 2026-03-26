@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Facebook/Instagram Token Checker</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 40px;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        
+        .section {
+            margin-bottom: 30px;
+        }
+        
+        .section h2 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 20px;
+        }
+        
+        .input-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 500;
+            font-size: 14px;
+        }
+        
+        input[type="text"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .result {
+            margin-top: 20px;
+            padding: 20px;
+            border-radius: 8px;
+            background: #f8f9fa;
+            border-left: 4px solid #667eea;
+            display: none;
+        }
+        
+        .result.show {
+            display: block;
+        }
+        
+        .result h3 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+        
+        .result-item {
+            margin-bottom: 10px;
+            padding: 8px;
+            background: white;
+            border-radius: 4px;
+        }
+        
+        .result-item strong {
+            color: #667eea;
+        }
+        
+        .success {
+            border-left-color: #28a745;
+            background: #d4edda;
+        }
+        
+        .warning {
+            border-left-color: #ffc107;
+            background: #fff3cd;
+        }
+        
+        .error {
+            border-left-color: #dc3545;
+            background: #f8d7da;
+        }
+        
+        .token-display {
+            word-break: break-all;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            background: #f1f1f1;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+        
+        .loading {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-left: 10px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .info-box {
+            background: #e7f3ff;
+            border-left: 4px solid #2196F3;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            color: #333;
+        }
+        
+        .info-box strong {
+            color: #2196F3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔐 Facebook/Instagram Token Checker</h1>
+        <p class="subtitle">Check token expiration and exchange for long-lived tokens</p>
+        
+        <div class="info-box">
+            <strong>📝 Note:</strong> This tool runs entirely in your browser. Your tokens are never sent to any server except Facebook's API.
+        </div>
+        
+        <div class="section">
+            <h2>1️⃣ Check Token Expiration</h2>
+            <div class="input-group">
+                <label for="checkToken">Enter your access token:</label>
+                <input type="text" id="checkToken" placeholder="EAAUktfit6a0BO...">
+            </div>
+            <button onclick="checkExpiration()">Check Expiration</button>
+            <div id="checkResult" class="result"></div>
+        </div>
+        
+        <div class="section">
+            <h2>2️⃣ Exchange for Long-Lived Token</h2>
+            <div class="input-group">
+                <label for="exchangeToken">Enter your current token (short-lived or expiring):</label>
+                <input type="text" id="exchangeToken" placeholder="EAAUktfit6a0BO...">
+            </div>
+            <button onclick="exchangeToken()">Exchange for Long-Lived Token</button>
+            <div id="exchangeResult" class="result"></div>
+        </div>
+    </div>
+    
+    <script>
+        const FACEBOOK_APP_ID = '875964825144424';
+        const FACEBOOK_APP_SECRET = 'b30833d4b100675e3197c3e987ea4de2';
+        
+        async function checkExpiration() {
+            const token = document.getElementById('checkToken').value.trim();
+            const resultDiv = document.getElementById('checkResult');
+            
+            if (!token) {
+                showResult(resultDiv, 'error', 'Please enter a token');
+                return;
+            }
+            
+            resultDiv.className = 'result show';
+            resultDiv.innerHTML = '<div class="loading"></div> Checking token...';
+            
+            try {
+                const url = `https://graph.facebook.com/v24.0/debug_token?input_token=${encodeURIComponent(token)}&access_token=${encodeURIComponent(token)}`;
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                if (data.error) {
+                    showResult(resultDiv, 'error', `Error: ${data.error.message}`);
+                    return;
+                }
+                
+                const tokenInfo = data.data;
+                const expiresAt = tokenInfo.expires_at;
+                const isValid = tokenInfo.is_valid;
+                const appId = tokenInfo.app_id;
+                
+                let html = '<h3>📊 Token Information</h3>';
+                html += `<div class="result-item"><strong>Valid:</strong> ${isValid ? '✅ Yes' : '❌ No'}</div>`;
+                html += `<div class="result-item"><strong>App ID:</strong> ${appId}</div>`;
+                
+                if (expiresAt === 0) {
+                    html += `<div class="result-item"><strong>Expires:</strong> ✅ NEVER (Permanent token)</div>`;
+                    showResult(resultDiv, 'success', html);
+                } else {
+                    const expirationDate = new Date(expiresAt * 1000);
+                    const now = new Date();
+                    const daysUntilExpiry = Math.floor((expirationDate - now) / (1000 * 60 * 60 * 24));
+                    
+                    html += `<div class="result-item"><strong>Expires:</strong> ${expirationDate.toLocaleString()}</div>`;
+                    html += `<div class="result-item"><strong>Days until expiry:</strong> ${daysUntilExpiry}</div>`;
+                    
+                    let status = 'success';
+                    let message = '';
+                    
+                    if (daysUntilExpiry < 0) {
+                        status = 'error';
+                        message = '<div class="result-item"><strong>⚠️ Token has EXPIRED!</strong> You need to get a new token.</div>';
+                    } else if (daysUntilExpiry < 7) {
+                        status = 'warning';
+                        message = '<div class="result-item"><strong>⚠️ WARNING:</strong> Token expires in less than 7 days! Refresh your token NOW.</div>';
+                    } else if (daysUntilExpiry < 30) {
+                        status = 'warning';
+                        message = `<div class="result-item"><strong>💡 Tip:</strong> Set a reminder to refresh in ${daysUntilExpiry - 7} days.</div>`;
+                    } else {
+                        message = '<div class="result-item"><strong>✅ Token is valid for more than 30 days. You\'re good!</strong></div>';
+                    }
+                    
+                    html += message;
+                    showResult(resultDiv, status, html);
+                }
+            } catch (error) {
+                showResult(resultDiv, 'error', `Error: ${error.message}`);
+            }
+        }
+        
+        async function exchangeToken() {
+            const token = document.getElementById('exchangeToken').value.trim();
+            const resultDiv = document.getElementById('exchangeResult');
+            
+            if (!token) {
+                showResult(resultDiv, 'error', 'Please enter a token');
+                return;
+            }
+            
+            resultDiv.className = 'result show';
+            resultDiv.innerHTML = '<div class="loading"></div> Exchanging token...';
+            
+            try {
+                const params = new URLSearchParams({
+                    grant_type: 'fb_exchange_token',
+                    client_id: FACEBOOK_APP_ID,
+                    client_secret: FACEBOOK_APP_SECRET,
+                    fb_exchange_token: token
+                });
+                
+                const url = `https://graph.facebook.com/v24.0/oauth/access_token?${params}`;
+                const response = await fetch(url, { method: 'POST' });
+                const data = await response.json();
+                
+                if (data.error) {
+                    showResult(resultDiv, 'error', `Error: ${data.error.message}`);
+                    return;
+                }
+                
+                const newToken = data.access_token;
+                const expiresIn = data.expires_in;
+                const expiresInDays = Math.floor(expiresIn / (60 * 60 * 24));
+                
+                let html = '<h3>✅ Token Exchange Successful!</h3>';
+                html += `<div class="result-item"><strong>New Long-Lived Token:</strong></div>`;
+                html += `<div class="token-display">${newToken}</div>`;
+                html += `<div class="result-item"><strong>Expires in:</strong> ${expiresInDays} days (${expiresIn} seconds)</div>`;
+                html += '<h3 style="margin-top: 20px;">📝 Next Steps:</h3>';
+                html += '<div class="result-item">1. Copy the token above</div>';
+                html += '<div class="result-item">2. Go to Supabase Dashboard → Settings → Edge Functions → Secrets</div>';
+                html += '<div class="result-item">3. Update FACEBOOK_ACCESS_TOKEN</div>';
+                html += '<div class="result-item">4. Update INSTAGRAM_ACCESS_TOKEN (same token)</div>';
+                html += `<div class="result-item">5. Set a reminder for ${expiresInDays - 7} days from now</div>`;
+                
+                showResult(resultDiv, 'success', html);
+            } catch (error) {
+                showResult(resultDiv, 'error', `Error: ${error.message}`);
+            }
+        }
+        
+        function showResult(div, type, content) {
+            div.className = `result show ${type}`;
+            div.innerHTML = content;
+        }
+        
+        // Allow Enter key to trigger actions
+        document.getElementById('checkToken').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') checkExpiration();
+        });
+        
+        document.getElementById('exchangeToken').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') exchangeToken();
+        });
+    </script>
+</body>
+</html>
