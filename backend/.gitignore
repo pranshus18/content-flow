@@ -1,0 +1,19 @@
+node_modules/
+dist/
+coverage/
+tmp/
+temp/
+uploads/
+processed/
+
+# Secrets — keep only .env.example in git
+.env
+.env.*
+!.env.example
+
+*.log
+*.pem
+*.key
+*credentials*
+*service-account*.json
+.DS_Store

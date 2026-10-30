@@ -1,5 +1,19 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build / output
+dist/
+dist-ssr/
+build/
+out/
+.turbo/
+.cache/
+*.tsbuildinfo
+
 # Logs
-logs
+logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
@@ -7,28 +21,94 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
-*.local
+# Environment and secrets — never commit real keys
+.env
+.env.*
+!.env.example
+!**/.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+id_rsa
+id_rsa.pub
+*.secret
+*credentials*
+*service-account*.json
+google-services.json
+firebase-adminsdk*.json
 
-# Editor directories and files
+# Local secrets / scratch notes that may contain tokens
+ints.txt
+fb_page_details.txt
+*_token*
+*token*exchange*
+secrets/
+private/
+
+# OS / editor
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+Desktop.ini
+.idea/
 .vscode/*
 !.vscode/extensions.json
-.idea
-.DS_Store
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
+*.local
 
-# Environment variables
-.env
-.env.backup
-.env.local
-.env.*.local
+# Test / coverage
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
 
-# Supabase
+# Supabase local
 .branches
 .temp
+supabase/.branches
+supabase/.temp
+
+# Temp media / processing
+tmp/
+temp/
+*.tmp
+*.temp
+uploads/
+processed/
+backend/tmp/
+frontend/tmp/
+
+# Local media dumps (keep repo clean)
+*.mp4
+*.mov
+*.webm
+*.mkv
+*.avi
+!frontend/public/**
+
+# Screenshots and local debug HTML/JS helpers
+Screenshot*.png
+**/Screenshot*
+*.screenshot.*
+check-token*.js
+token-checker.html
+test-*.html
+test-*.js
+upload-logo.html
+upload-logo.js
+
+# Package manager noise
+.npm
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+bun.lockb

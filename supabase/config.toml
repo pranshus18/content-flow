@@ -1,15 +1,5 @@
-project_id = "uzmjedaumxbqkmpvvpnh"
+project_id = "pxahdymgacynemhxfqpd"
 
-[functions.generate-caption]
-verify_jwt = false
-
-[functions.publish-social]
-verify_jwt = false
-
-[functions.publish-content]
-verify_jwt = false
-
-# Cron job to automatically publish scheduled content every minute
-# This checks for posts that should be published and publishes them
-# Note: You need to configure this in Supabase Dashboard → Edge Functions → Cron Jobs
-# Schedule: * * * * * (every minute) or */5 * * * * (every 5 minutes)
+# Edge Functions were removed. Caption, media, publish, and analytics
+# run in the local Express backend (backend/ on port 8081).
+# Supabase is used for Auth, Postgres, and Storage only.
