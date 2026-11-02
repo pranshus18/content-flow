@@ -818,17 +818,44 @@ export async function wrapNativeIntroOutro(
       return;
     }
 
-    await concatExact(clips, outputPath, {
-      width: options.width,
-      height: options.height,
-      fps: options.fps,
-      withAudio: options.withAudio,
-    });
+    const addedBudget =
+      (hasIntro ? Math.max(0.4, options.introDuration * 0.45) : 0)
+      + (hasOutro ? Math.max(0.4, options.outroDuration * 0.45) : 0);
+
+    // Prefer soft blend for a native feel; if it short-changes duration, hard-concat so Apply never fails.
+    let usedBlend = false;
+    try {
+      await blendContinuity(clips, outputPath, {
+        width: options.width,
+        height: options.height,
+        fps: options.fps,
+        withAudio: options.withAudio,
+      });
+      usedBlend = true;
+      const blended = await probeVideo(outputPath);
+      if (blended.duration + 0.05 < middleDuration + addedBudget) {
+        throw new Error(
+          `Soft blend too short (${blended.duration.toFixed(1)}s < ${(middleDuration + addedBudget).toFixed(1)}s)`,
+        );
+      }
+    } catch (blendError) {
+      const detail = blendError instanceof Error ? blendError.message : String(blendError);
+      console.warn(`[video-tools] Soft blend unavailable (${detail}); using exact concat so intro/outro still apply`);
+      await concatExact(clips, outputPath, {
+        width: options.width,
+        height: options.height,
+        fps: options.fps,
+        withAudio: options.withAudio,
+      });
+      usedBlend = false;
+    }
+
     const framed = await probeVideo(outputPath);
-    const expected = clips.reduce((sum, clip) => sum + clip.duration, 0);
-    if (hasOutro && framed.duration < expected - 1.2) {
+    // Prove intro/outro added time vs the middle clip alone — do not use brittle hard-concat math after xfade.
+    const minLanded = middleDuration + addedBudget - (usedBlend ? 0.35 : 0.15);
+    if ((hasIntro || hasOutro) && framed.duration + 0.05 < minLanded) {
       throw new Error(
-        `Outro did not land in the video (got ${framed.duration.toFixed(1)}s, expected about ${expected.toFixed(1)}s)`,
+        `Intro/outro did not land in the video (got ${framed.duration.toFixed(1)}s, middle was ${middleDuration.toFixed(1)}s)`,
       );
     }
   } catch (error) {

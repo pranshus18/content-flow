@@ -6,7 +6,7 @@ import { logger, trimUrl } from '../lib/logger.js';
 import { getServiceClient } from '../lib/supabase.js';
 import { httpError } from '../lib/http.js';
 import { extractLastVideoFrame, extractVideoFrame, probeVideo, withTempDir } from '../lib/video-tools.js';
-import { applyLogoOverlaysToImage, type BrandingOverlayRow } from './branded-overlay.js';
+import type { BrandingOverlayRow } from './branded-overlay.js';
 
 const GEMINI_API = 'https://generativelanguage.googleapis.com/v1beta';
 const MEDIA_BUCKET = 'content-media';
@@ -22,6 +22,21 @@ export type TemplateSaveTo = 'content' | 'branding' | 'none';
 export interface GenerateTemplateFrameInput {
   position?: TemplatePosition;
   contentId?: string;
+  prompt?: string;
+  stylePrompt?: string;
+  useAi?: boolean;
+  platform?: string;
+  title?: string;
+  headline?: string;
+  saveTo?: TemplateSaveTo;
+  branding?: BrandingOverlayRow | null;
+  /** When true, procedural layout guide omits embedded logos (corner badges are applied later). */
+  omitEmbeddedLogos?: boolean;
+}
+
+export interface GenerateTemplateFramePairInput {
+  contentId?: string;
+  stylePrompt?: string;
   prompt?: string;
   useAi?: boolean;
   platform?: string;
@@ -46,6 +61,8 @@ export type BrandingRow = {
   executor_name?: string | null;
   cta_text?: string | null;
   follow_cta_text?: string | null;
+  watermark_position?: string | null;
+  vendor_logo_position?: string | null;
 };
 
 const platformSizes: Record<string, { width: number; height: number }> = {
@@ -91,12 +108,21 @@ export function originalVideoUrl(content: {
   template_frames_applied?: boolean | null;
 } | null) {
   if (!content) return null;
-  if (content.original_media_url) return content.original_media_url;
-  if (content.template_source_url) return content.template_source_url;
-  if (!content.template_frames_applied) {
-    return content.media_url || content.enhanced_media_url || null;
+  const current = content.media_url || content.enhanced_media_url || null;
+  const original = content.original_media_url || null;
+  const source = content.template_source_url || null;
+
+  // Re-apply must always start from the unframed source — never from an already-branded media_url.
+  if (content.template_frames_applied) {
+    if (source && source !== current) return source;
+    if (original && original !== current) return original;
+    if (source) return source;
+    if (original) return original;
+    // Last resort so Apply does not hard-fail on older rows with missing source fields.
+    return current;
   }
-  return null;
+
+  return original || source || current;
 }
 
 export function frameFitsVideo(
@@ -744,6 +770,14 @@ function brandingLines(title: string, branding: BrandingRow | null, description?
   ].filter(Boolean).join('\n');
 }
 
+function logoPlacementLines(branding: BrandingOverlayRow | BrandingRow | null) {
+  const platformPos = String((branding as BrandingOverlayRow | null)?.watermark_position || 'bottom-right')
+    .replace(/_/g, '-');
+  const vendorPos = String((branding as BrandingOverlayRow | null)?.vendor_logo_position || 'bottom-left')
+    .replace(/_/g, '-');
+  return { platformPos, vendorPos };
+}
+
 function buildAiPrompt(
   position: TemplatePosition,
   title: string,
@@ -752,59 +786,99 @@ function buildAiPrompt(
   description?: string | null,
   size?: { width: number; height: number },
   hasOriginalShot?: boolean,
+  sharedStyle?: string,
+  logoRefs?: { platform: boolean; vendor: boolean },
 ) {
-  const role = position === 'intro' ? 'INTRO card that plays BEFORE the video' : 'OUTRO card that plays AFTER the video';
-  const brief = userPrompt?.trim();
+  const role = position === 'intro'
+    ? 'INTRO frame that opens the video (opening beat / title energy)'
+    : 'OUTRO frame that closes the video (thank-you / CTA close)';
+  const brief = (sharedStyle || userPrompt || '').trim();
   const details = brandingLines(title, branding, description);
   const canvas = size ? `${size.width}x${size.height}` : '1920x1080';
   const orientation = size ? orientationOf(size) : 'landscape';
+  const positionBeat = position === 'intro'
+    ? 'Opening moment: bold readable headline energy that leads into the footage.'
+    : 'Closing moment: thank-you / Follow us / Enquire energy that matches the intro style.';
+  const { platformPos, vendorPos } = logoPlacementLines(branding);
+  const integrateLogos = Boolean(logoRefs?.platform || logoRefs?.vendor);
+  const logoRules = integrateLogos
+    ? `LOGO INTEGRATION (must look native to the footage — not stickers):
+- Attached after the layout guide: ${logoRefs?.platform ? 'platform/company logo' : ''}${logoRefs?.platform && logoRefs?.vendor ? ' and ' : ''}${logoRefs?.vendor ? 'vendor logo' : ''}.
+- Place the platform logo in the ${platformPos} corner${logoRefs?.vendor ? ` and the vendor logo in the ${vendorPos} corner` : ''}.
+- Strip any black/white card or box behind the logos. Render only the logo artwork on the scene.
+- AUTO color adaptation: grade each logo to the real local background behind that corner.
+  - On dark walls/areas, brighten/light-edge the logo so it stays readable.
+  - On bright walls/areas, slightly deepen the logo so it does not wash out.
+  - Match the scene's color temperature, lighting direction, grain, and mild depth of field.
+- Soft, subtle presence — no opaque rounded rectangles, no drop-shadow plates, no UI chrome, no fake watermarks.
+- Keep logo size modest (~10–14% of frame width) with ~5% margin from edges.
+- Logos must look like they belong in this exact kitchen/room shot, not pasted on later.`
+    : `LOGO RULES:
+- Do NOT invent logos, brand marks, watermarks, badges, or fake logo placeholders.
+- Leave corner zones clear if no real logo assets were attached.`;
   const fillRules = `CRITICAL FRAME RULES:
 - This video is ${orientation}. Compose for exactly ${canvas} and keep that exact aspect ratio.
 - Do not generate a landscape title card for a portrait video, and do not generate a portrait card for a landscape video.
-- Keep every word, logo, button, and contact line fully inside the frame. Nothing may be cropped or overflow the edges.
-- Leave a safe margin of about 6% on every side so type and logos are not flush against the edge.
+- Keep every word, button, and contact line fully inside the frame. Nothing may be cropped or overflow the edges.
+- Leave a safe margin of about 6% on every side so type is not flush against the edge.
 - Do not add black bars, letterboxing, pillarboxing, or empty background around a smaller card.
 - Do not render a mockup, device frame, rounded floating card, photo-in-a-window, or player UI.
 - Do not draw YouTube/Instagram chrome, play buttons, or a small preview sitting on a dark screen.
-- This image is the actual video frame, not a picture of a title card.`;
+- This image is the actual video frame, not a picture of a title card. Full-bleed only.
+${logoRules}`;
   const originalShotRules = hasOriginalShot
     ? `ORIGINAL VIDEO REFERENCE:
 - The first attached photo is a real still from the user's original video. Match its scene, lighting, colors, and subject.
 - The ${position} must look like a natural continuation of that footage, not a separate slide or poster.
 - Keep the same room / product / people / environment from the original still.
-- The second attached image is only a layout/branding guide if present.`
-    : `Use the attached branding layout as the visual guide.`;
+- The next attached image is only a layout/typography guide. Do not copy fake marks from it.`
+    : `Use the attached branding layout as a typography/layout guide only.`;
+  const sharedStyleRules = sharedStyle?.trim()
+    ? `SHARED BRAND LOOK (must match the paired ${position === 'intro' ? 'outro' : 'intro'}):
+- Use the same palette, typography, lighting mood, and overall finish described below.
+- ${positionBeat}`
+    : positionBeat;
 
   if (brief) {
     return `Create one finished social-media ${role} at exactly ${canvas}.
-The user's creative brief is the PRIMARY instruction. Follow it closely and interpret it for this ${position}.
+The user's creative brief is the PRIMARY style instruction for the whole branding package. Interpret it for this ${position} while keeping the paired frame visually consistent.
 
-USER PROMPT:
+USER STYLE PROMPT:
 ${brief}
 
+${sharedStyleRules}
 ${originalShotRules}
-Include these brand details only where they fit the brief and do not fight the prompt.
-Keep any provided platform/vendor logos clearly visible when they are present in the reference.
+Include these brand details as text/copy where they fit the brief.
 ${details}
 
 ${fillRules}
 Cinematic lighting, large readable type for mobile.
-Do not add extra captions, fake social UI, or watermarks besides the brand logos.
+Do not add extra captions or fake social UI.
 Return only the finished ${position} image.`;
   }
 
   const fallbackLook = position === 'intro'
-    ? 'full-bleed split-screen intro: branded navy panel on the left with platform logo, lifestyle/product photo on the right, vendor mark in the executed-by bar, both panels reaching the frame edges'
-    : 'full-bleed end card with platform logo, vendor logo, Enquire now / Follow us, and contact details over a blurred photo that fills the frame';
+    ? 'full-bleed intro over the real footage: bold headline typography, cinematic grade matching the scene'
+    : 'full-bleed outro over the real footage: thank-you / Enquire now / contact details matching the scene';
 
   return `Create a polished social-media ${role} at exactly ${canvas}.
 Look: ${fallbackLook}.
+${sharedStyleRules}
 ${originalShotRules}
-Use the reference images for layout, logos, and wording, then make it cinematic and high-end.
+Use the reference images for layout and wording, then make it cinematic and high-end.
 ${details}
 ${fillRules}
-No extra captions, no fake social icons, no watermarks besides the brand logos.
+No extra captions, no fake social icons.
 Return only the finished title-card image.`;
+}
+
+function brandingWithoutEmbeddedLogos(branding: BrandingRow | null): BrandingRow | null {
+  if (!branding) return null;
+  return {
+    ...branding,
+    company_logo_url: null,
+    vendor_logo_url: null,
+  };
 }
 
 async function persistFrame(saveTo: TemplateSaveTo, position: TemplatePosition, frameUrl: string, contentId?: string) {
@@ -837,6 +911,9 @@ export async function generateTemplateFrame(input: GenerateTemplateFrameInput) {
   const position: TemplatePosition = input.position === 'outro' ? 'outro' : 'intro';
   const saveTo: TemplateSaveTo = input.saveTo === 'content' || input.saveTo === 'branding' ? input.saveTo : 'none';
   const useAi = input.useAi !== false;
+  const styleBrief = (input.stylePrompt || input.prompt || '').trim();
+  // Logos are corner-composited later — keep procedural/AI references logo-free by default.
+  const omitEmbeddedLogos = input.omitEmbeddedLogos !== false;
   const content = await loadContent(input.contentId);
   const storedBranding = await loadBranding();
   const branding: BrandingRow | null = {
@@ -844,7 +921,11 @@ export async function generateTemplateFrame(input: GenerateTemplateFrameInput) {
     company_logo_url: input.branding?.company_logo_url || null,
     vendor_logo_url: input.branding?.vendor_logo_url || null,
     company_website_url: input.branding?.company_website_url || null,
-  };
+    watermark_position: input.branding?.watermark_position || null,
+    vendor_logo_position: input.branding?.vendor_logo_position || null,
+  } as BrandingRow;
+  // Procedural layout guide stays logo-free; real logos are attached as AI refs and/or composited natively later.
+  const layoutBranding = omitEmbeddedLogos ? brandingWithoutEmbeddedLogos(branding) : branding;
   const platform = (input.platform || content?.platform || 'youtube').toLowerCase();
   const isVideo = /video/i.test(content?.media_type || '')
     || /\.(mp4|mov|webm|m4v)(\?|$)/i.test(content?.media_url || content?.enhanced_media_url || content?.original_media_url || '');
@@ -880,7 +961,8 @@ export async function generateTemplateFrame(input: GenerateTemplateFrameInput) {
     height: size.height,
     orientation: orientationOf(size),
     title: title.slice(0, 80),
-    hasUserPrompt: Boolean(input.prompt?.trim()),
+    hasUserPrompt: Boolean(styleBrief),
+    omitEmbeddedLogos,
   });
 
   const brandedBytes = await renderTemplateStill({
@@ -889,7 +971,7 @@ export async function generateTemplateFrame(input: GenerateTemplateFrameInput) {
     height: size.height,
     title,
     headline,
-    branding,
+    branding: layoutBranding,
     heroImage,
     variant: position === 'intro' ? 'intro' : 'enquire',
   });
@@ -899,39 +981,44 @@ export async function generateTemplateFrame(input: GenerateTemplateFrameInput) {
   let provider = 'branding-template';
   let model: string | undefined;
 
+  let logosIntegrated = false;
   if (useAi) {
+    const platformLogoBytes = branding?.company_logo_url
+      ? await loadImageBuffer(branding.company_logo_url)
+      : null;
+    const vendorLogoBytes = branding?.vendor_logo_url
+      ? await loadImageBuffer(branding.vendor_logo_url)
+      : null;
+    const logoRefs = {
+      platform: Boolean(platformLogoBytes),
+      vendor: Boolean(vendorLogoBytes),
+    };
     const prompt = buildAiPrompt(
       position,
       title,
       branding,
-      input.prompt,
+      styleBrief,
       content?.description,
       size,
       Boolean(heroImage),
+      styleBrief,
+      logoRefs,
     );
-    const references = heroImage ? [heroImage, brandedBytes] : [brandedBytes];
+    const references = [
+      ...(heroImage ? [heroImage] : []),
+      brandedBytes,
+      ...(platformLogoBytes ? [platformLogoBytes] : []),
+      ...(vendorLogoBytes ? [vendorLogoBytes] : []),
+    ];
     const ai = await generateWithGemini(prompt, references);
     frameBytes = ai.bytes;
     contentType = ai.mimeType.startsWith('image/') ? ai.mimeType : 'image/png';
     provider = 'gemini';
     model = ai.model;
+    logosIntegrated = logoRefs.platform || logoRefs.vendor;
   }
 
-  const overlayBranding: BrandingOverlayRow = {
-    company_logo_url: input.branding?.company_logo_url || null,
-    vendor_logo_url: input.branding?.vendor_logo_url || null,
-    company_website_url: input.branding?.company_website_url || null,
-    watermark_position: input.branding?.watermark_position || 'bottom-right',
-    watermark_enabled: true,
-    follow_cta_enabled: false,
-  };
-  frameBytes = await applyLogoOverlaysToImage(
-    frameBytes,
-    overlayBranding,
-    size.width,
-    size.height,
-    heroImage,
-  );
+  // When AI already placed real logos into the frame, do not stamp badge overlays later.
   contentType = 'image/png';
 
   const frameUrl = await uploadTemplateFrame(frameBytes, `templates/${position}`, contentType);
@@ -941,6 +1028,7 @@ export async function generateTemplateFrame(input: GenerateTemplateFrameInput) {
     frameUrl: trimUrl(frameUrl),
     provider,
     model,
+    logosIntegrated,
   });
 
   return {
@@ -949,6 +1037,44 @@ export async function generateTemplateFrame(input: GenerateTemplateFrameInput) {
     frameUrl,
     provider,
     model,
+    usedAi: useAi,
+    logosIntegrated,
+  };
+}
+
+export async function generateTemplateFramePair(input: GenerateTemplateFramePairInput) {
+  const stylePrompt = (input.stylePrompt || input.prompt || '').trim() || undefined;
+  const useAi = input.useAi !== false;
+  const shared = {
+    contentId: input.contentId,
+    stylePrompt,
+    prompt: stylePrompt,
+    useAi,
+    platform: input.platform,
+    title: input.title,
+    headline: input.headline,
+    saveTo: input.saveTo === 'content' || input.saveTo === 'branding' ? input.saveTo : 'none' as TemplateSaveTo,
+    branding: input.branding,
+    omitEmbeddedLogos: true,
+  };
+
+  logger.info('generate-template-frame', 'Generating matching intro + outro pair', {
+    contentId: input.contentId,
+    useAi,
+    hasStylePrompt: Boolean(stylePrompt),
+  });
+
+  const [intro, outro] = await Promise.all([
+    generateTemplateFrame({ ...shared, position: 'intro' }),
+    generateTemplateFrame({ ...shared, position: 'outro' }),
+  ]);
+
+  return {
+    success: true,
+    introFrameUrl: intro.frameUrl,
+    outroFrameUrl: outro.frameUrl,
+    provider: intro.provider || outro.provider,
+    model: intro.model || outro.model,
     usedAi: useAi,
   };
 }

@@ -14,6 +14,8 @@ import {
   type FfmpegOverlay,
 } from '../lib/video-tools.js';
 import {
+  applyLogoOverlaysToImage,
+  asPosition,
   compositeLogoOverlays,
   hasLogoOverlays,
   normalizeFrameToSize,
@@ -21,7 +23,34 @@ import {
   shouldApplyVideoOverlays,
   type BrandingOverlayRow,
 } from './branded-overlay.js';
-import { frameFitsVideo, generateTemplateFrame, orientationOf, originalVideoUrl } from './generate-template-frame.js';
+import {
+  frameFitsVideo,
+  generateTemplateFrame,
+  orientationOf,
+  originalVideoUrl,
+} from './generate-template-frame.js';
+
+function isVideoContent(content: {
+  media_type?: string | null;
+  media_url?: string | null;
+  original_media_url?: string | null;
+  enhanced_media_url?: string | null;
+}) {
+  if (content.media_type === 'video') return true;
+  if (content.media_type === 'image') return false;
+  const url = content.original_media_url || content.media_url || content.enhanced_media_url || '';
+  return /\.(mp4|mov|webm|m4v)(\?|$)/i.test(url);
+}
+
+function originalImageUrl(content: {
+  original_media_url?: string | null;
+  template_source_url?: string | null;
+  media_url?: string | null;
+  enhanced_media_url?: string | null;
+  template_frames_applied?: boolean | null;
+}) {
+  return originalVideoUrl(content);
+}
 
 const MEDIA_BUCKET = 'content-media';
 
@@ -31,10 +60,17 @@ export interface ApplyTemplateFramesInput {
   outroFrameUrl?: string | null;
   introDuration?: number;
   outroDuration?: number;
+  stylePrompt?: string | null;
   introPrompt?: string | null;
   outroPrompt?: string | null;
   branding?: BrandingOverlayRow | null;
   sourceUrl?: string | null;
+}
+
+/** System-generated frames live under templates/intro|outro; user uploads use {userId}/templates/... */
+function isSystemTemplateUrl(url: string | null | undefined) {
+  if (!url) return false;
+  return /\/templates\/(intro|outro)\//i.test(url);
 }
 
 function clampDuration(value: unknown, fallback: number) {
@@ -75,6 +111,19 @@ async function uploadVideo(bytes: Buffer, contentId: string) {
   if (error) throw new Error(`Failed to store framed video: ${error.message}`);
   const { data } = supabase.storage.from(MEDIA_BUCKET).getPublicUrl(filePath);
   if (!data.publicUrl) throw new Error('Failed to create public URL for framed video');
+  return data.publicUrl;
+}
+
+async function uploadBrandedImage(bytes: Buffer, contentId: string) {
+  const filePath = `branded-images/${contentId}-${Date.now()}.png`;
+  const supabase = getServiceClient();
+  const { error } = await supabase.storage.from(MEDIA_BUCKET).upload(filePath, bytes, {
+    contentType: 'image/png',
+    upsert: false,
+  });
+  if (error) throw new Error(`Failed to store branded image: ${error.message}`);
+  const { data } = supabase.storage.from(MEDIA_BUCKET).getPublicUrl(filePath);
+  if (!data.publicUrl) throw new Error('Failed to create public URL for branded image');
   return data.publicUrl;
 }
 
@@ -120,40 +169,67 @@ async function frameForVideo(input: {
   width: number;
   height: number;
   branding: BrandingOverlayRow;
+  /** Prefer regenerating system AI/procedural frames when logos will be corner-composited. */
+  forceRegenerateSystemFrames?: boolean;
 }) {
   if (input.existingUrl) {
-    try {
-      const response = await fetch(input.existingUrl);
-      if (response.ok) {
-        const bytes = Buffer.from(await response.arrayBuffer());
-        if (await frameMatchesVideo(bytes, input.width, input.height)) {
-          return { url: input.existingUrl, bytes };
+    const isCustomUpload = !isSystemTemplateUrl(input.existingUrl);
+    const shouldTryReuse = isCustomUpload || !input.forceRegenerateSystemFrames;
+    if (shouldTryReuse) {
+      try {
+        const response = await fetch(input.existingUrl);
+        if (response.ok) {
+          const bytes = Buffer.from(await response.arrayBuffer());
+          if (await frameMatchesVideo(bytes, input.width, input.height)) {
+            logger.info('apply-template-frames', `Reusing existing ${input.position} frame`, {
+              contentId: input.contentId,
+              customUpload: isCustomUpload,
+            });
+            // Custom uploads may need native logo composite; system AI frames already include logos.
+            return {
+              url: input.existingUrl,
+              bytes,
+              logosIntegrated: !isCustomUpload && hasLogoOverlays(input.branding),
+            };
+          }
+          logger.info('apply-template-frames', `${input.position} frame orientation does not match the original video, regenerating with prompt`, {
+            contentId: input.contentId,
+            video: `${input.width}x${input.height}`,
+            hasPrompt: Boolean(input.prompt?.trim()),
+          });
         }
-        logger.info('apply-template-frames', `${input.position} frame orientation does not match the original video, regenerating with prompt`, {
-          contentId: input.contentId,
-          video: `${input.width}x${input.height}`,
-          hasPrompt: Boolean(input.prompt?.trim()),
-        });
+      } catch (error) {
+        logger.warn('apply-template-frames', `Could not read existing ${input.position} frame`, error);
       }
-    } catch (error) {
-      logger.warn('apply-template-frames', `Could not read existing ${input.position} frame`, error);
+    } else {
+      logger.info('apply-template-frames', `Regenerating system ${input.position} frame so corner logos stay clean`, {
+        contentId: input.contentId,
+      });
     }
   }
 
+  const stylePrompt = input.prompt?.trim() || undefined;
+  const wantsAi = Boolean(stylePrompt) || hasLogoOverlays(input.branding);
   try {
     const generated = await generateTemplateFrame({
       position: input.position,
       contentId: input.contentId,
       title: input.title || undefined,
       platform: input.platform || undefined,
-      prompt: input.prompt?.trim() || undefined,
-      useAi: true,
+      prompt: stylePrompt,
+      stylePrompt,
+      useAi: wantsAi,
       saveTo: 'none',
       branding: input.branding,
+      omitEmbeddedLogos: true,
     });
     const response = await fetch(generated.frameUrl);
     if (!response.ok) throw new Error(`Failed to download generated ${input.position} frame`);
-    return { url: generated.frameUrl, bytes: Buffer.from(await response.arrayBuffer()) };
+    return {
+      url: generated.frameUrl,
+      bytes: Buffer.from(await response.arrayBuffer()),
+      logosIntegrated: Boolean(generated.logosIntegrated),
+    };
   } catch (error) {
     logger.warn('apply-template-frames', `AI ${input.position} regenerate failed, using branding frame`, error);
     const generated = await generateTemplateFrame({
@@ -161,14 +237,20 @@ async function frameForVideo(input: {
       contentId: input.contentId,
       title: input.title || undefined,
       platform: input.platform || undefined,
-      prompt: input.prompt?.trim() || undefined,
+      prompt: stylePrompt,
+      stylePrompt,
       useAi: false,
       saveTo: 'none',
       branding: input.branding,
+      omitEmbeddedLogos: true,
     });
     const response = await fetch(generated.frameUrl);
     if (!response.ok) throw new Error(`Failed to download ${input.position} frame`);
-    return { url: generated.frameUrl, bytes: Buffer.from(await response.arrayBuffer()) };
+    return {
+      url: generated.frameUrl,
+      bytes: Buffer.from(await response.arrayBuffer()),
+      logosIntegrated: false,
+    };
   }
 }
 
@@ -189,31 +271,127 @@ export async function applyTemplateFrames(input: ApplyTemplateFramesInput) {
     .maybeSingle();
 
   // Use only this content's frames — never pull old global branding intro/outro onto a new video.
-  const providedIntro = input.introFrameUrl || content.intro_frame_url || null;
-  const providedOutro = input.outroFrameUrl || content.outro_frame_url || null;
-  const introEnabled = Boolean(providedIntro);
-  const outroEnabled = Boolean(providedOutro);
+  let providedIntro = input.introFrameUrl || content.intro_frame_url || null;
+  let providedOutro = input.outroFrameUrl || content.outro_frame_url || null;
+  const hasAnyFramePrompt = Boolean(
+    (input.stylePrompt || input.introPrompt || input.outroPrompt || '').trim(),
+  );
+  // Never inherit corner positions from global branding_settings — only this request / content row.
+  const brandingSettings = { ...(branding || {}) } as Record<string, unknown>;
+  delete brandingSettings.watermark_position;
+  delete brandingSettings.vendor_logo_position;
+
+  const platformPosition = asPosition(
+    input.branding?.watermark_position ?? content.watermark_position,
+    'bottom-right',
+  );
+  const vendorPosition = asPosition(
+    input.branding?.vendor_logo_position ?? content.vendor_logo_position,
+    'bottom-left',
+  );
+
   const brandingRow = {
-    ...((branding || {}) as BrandingOverlayRow),
-    company_logo_url: input.branding?.company_logo_url ?? content.watermark_logo_url ?? null,
-    vendor_logo_url: input.branding?.vendor_logo_url ?? content.vendor_logo_url ?? null,
-    company_website_url: input.branding?.company_website_url ?? content.watermark_website_url ?? null,
-    watermark_position: input.branding?.watermark_position || content.watermark_position || 'bottom-right',
+    ...(brandingSettings as BrandingOverlayRow),
+    ...(input.branding || {}),
+    company_logo_url: input.branding
+      ? (input.branding.company_logo_url || null)
+      : (content.watermark_logo_url || null),
+    vendor_logo_url: input.branding
+      ? (input.branding.vendor_logo_url || null)
+      : (content.vendor_logo_url || null),
+    company_website_url: input.branding
+      ? (input.branding.company_website_url || null)
+      : (content.watermark_website_url || null),
+    watermark_position: platformPosition,
+    vendor_logo_position: vendorPosition,
+    watermark_enabled: true,
   } as BrandingOverlayRow;
-  if (input.branding) {
-    for (const [key, value] of Object.entries(input.branding)) {
-      if (value !== undefined && key !== 'company_logo_url' && key !== 'vendor_logo_url' && key !== 'company_website_url') {
-        (brandingRow as Record<string, unknown>)[key] = value;
-      }
-    }
-  }
+
+  logger.info('apply-template-frames', 'Resolved logo corners for this content', {
+    contentId: input.contentId,
+    platformPosition,
+    vendorPosition,
+    fromRequest: {
+      platform: input.branding?.watermark_position ?? null,
+      vendor: input.branding?.vendor_logo_position ?? null,
+    },
+    fromContent: {
+      platform: content.watermark_position ?? null,
+      vendor: content.vendor_logo_position ?? null,
+    },
+  });
+
   const overlayEnabled = shouldApplyVideoOverlays(brandingRow);
+  // One Apply click: logos + intro + outro together whenever branding is present.
+  const wantsBrandPackage = Boolean(
+    providedIntro
+    || providedOutro
+    || hasAnyFramePrompt
+    || hasLogoOverlays(brandingRow)
+    || brandingRow.follow_cta_enabled,
+  );
+  const introEnabled = wantsBrandPackage;
+  const outroEnabled = wantsBrandPackage;
+  const brandingPatch = {
+    watermark_logo_url: brandingRow.company_logo_url || null,
+    vendor_logo_url: brandingRow.vendor_logo_url || null,
+    watermark_website_url: brandingRow.company_website_url || content.watermark_website_url || null,
+    watermark_position: platformPosition,
+    vendor_logo_position: vendorPosition,
+  };
 
   if (!introEnabled && !outroEnabled && !overlayEnabled) {
-    logger.info('apply-template-frames', 'Intro, outro, logos, and follow CTA disabled; leaving video unchanged', {
+    logger.info('apply-template-frames', 'Intro, outro, logos, and follow CTA disabled; leaving media unchanged', {
       contentId: input.contentId,
     });
-    return { success: true, skipped: true, content };
+    const { data: updatedOnly, error: updateOnlyError } = await supabase
+      .from('content')
+      .update(brandingPatch as never)
+      .eq('id', input.contentId)
+      .select()
+      .single();
+    if (updateOnlyError) throw new Error(updateOnlyError.message || 'Failed to save branding positions');
+    return { success: true, skipped: true, content: updatedOnly };
+  }
+
+  if (!isVideoContent(content)) {
+    const sourceUrl = originalImageUrl(content);
+    if (!sourceUrl) throw httpError(400, 'This content has no original image to brand.');
+
+    logger.info('apply-template-frames', 'Baking logos onto image at chosen positions', {
+      contentId: input.contentId,
+      sourceUrl: trimUrl(sourceUrl),
+      platformPosition: brandingPatch.watermark_position,
+      vendorPosition: brandingPatch.vendor_logo_position,
+    });
+
+    const response = await fetch(sourceUrl);
+    if (!response.ok) throw new Error(`Failed to download image (${response.status})`);
+    const sourceBytes = Buffer.from(await response.arrayBuffer());
+    const brandedBytes = await applyLogoOverlaysToImage(sourceBytes, brandingRow);
+    const finalUrl = await uploadBrandedImage(brandedBytes, input.contentId);
+
+    const { data: updatedImage, error: imageUpdateError } = await supabase
+      .from('content')
+      .update({
+        media_url: finalUrl,
+        enhanced_media_url: finalUrl,
+        original_media_url: content.original_media_url || sourceUrl,
+        template_source_url: sourceUrl,
+        template_frames_applied: true,
+        preprocessing_status: 'completed',
+        ...brandingPatch,
+      } as never)
+      .eq('id', input.contentId)
+      .select()
+      .single();
+    if (imageUpdateError) throw new Error(imageUpdateError.message || 'Failed to save branded image');
+
+    return {
+      success: true,
+      mediaUrl: finalUrl,
+      content: updatedImage,
+    };
   }
 
   const originalUrl = originalVideoUrl({
@@ -233,15 +411,75 @@ export async function applyTemplateFrames(input: ApplyTemplateFramesInput) {
     input.outroDuration ?? content.outro_frame_duration ?? branding?.end_card_duration,
     5,
   );
+  const introPrompt = (input.introPrompt || input.stylePrompt || '').trim() || null;
+  const outroPrompt = (input.outroPrompt || input.stylePrompt || '').trim() || null;
 
-  logger.info('apply-template-frames', 'Adding intro and outro to the original video', {
+  // Fill only missing frames, each with its own prompt — never overwrite a frame the user kept.
+  if (wantsBrandPackage && (!providedIntro || !providedOutro)) {
+    const jobs: Array<Promise<void>> = [];
+    if (!providedIntro) {
+      jobs.push((async () => {
+        try {
+          const generated = await generateTemplateFrame({
+            position: 'intro',
+            contentId: input.contentId,
+            stylePrompt: introPrompt || undefined,
+            prompt: introPrompt || undefined,
+            useAi: Boolean(introPrompt) || hasLogoOverlays(brandingRow),
+            platform: content.platform || undefined,
+            title: content.title || undefined,
+            saveTo: 'none',
+            branding: brandingRow,
+            omitEmbeddedLogos: true,
+          });
+          providedIntro = generated.frameUrl;
+        } catch (error) {
+          logger.warn('apply-template-frames', 'Auto intro generate failed; will fall back per-frame', error);
+        }
+      })());
+    }
+    if (!providedOutro) {
+      jobs.push((async () => {
+        try {
+          const generated = await generateTemplateFrame({
+            position: 'outro',
+            contentId: input.contentId,
+            stylePrompt: outroPrompt || undefined,
+            prompt: outroPrompt || undefined,
+            useAi: Boolean(outroPrompt) || hasLogoOverlays(brandingRow),
+            platform: content.platform || undefined,
+            title: content.title || undefined,
+            saveTo: 'none',
+            branding: brandingRow,
+            omitEmbeddedLogos: true,
+          });
+          providedOutro = generated.frameUrl;
+        } catch (error) {
+          logger.warn('apply-template-frames', 'Auto outro generate failed; will fall back per-frame', error);
+        }
+      })());
+    }
+    if (jobs.length) {
+      logger.info('apply-template-frames', 'Auto-generating only missing intro/outro frames', {
+        contentId: input.contentId,
+        missingIntro: !providedIntro,
+        missingOutro: !providedOutro,
+      });
+      await Promise.all(jobs);
+    }
+  }
+
+  logger.info('apply-template-frames', 'Baking intro + outro (logos on cards only) into the original video', {
     contentId: input.contentId,
     originalUrl: trimUrl(originalUrl),
     introEnabled,
     outroEnabled,
     overlayEnabled,
+    logosOnIntroOutroOnly: hasLogoOverlays(brandingRow),
     introDuration,
     outroDuration,
+    hasIntroPrompt: Boolean(introPrompt),
+    hasOutroPrompt: Boolean(outroPrompt),
   });
 
   let introFrameUrl = providedIntro;
@@ -262,12 +500,14 @@ export async function applyTemplateFrames(input: ApplyTemplateFramesInput) {
       orientation: orientationOf(probe),
     });
 
+    // Mid-video: follow CTA only. Platform/vendor logos stay on intro + outro cards.
     const overlayPlan = overlayEnabled
       ? await prepareVideoOverlays({
           branding: brandingRow,
           width: probe.width,
           height: probe.height,
           duration: probe.duration,
+          includeLogos: false,
         })
       : [];
     const ffmpegOverlays: FfmpegOverlay[] = [];
@@ -298,26 +538,28 @@ export async function applyTemplateFrames(input: ApplyTemplateFramesInput) {
     );
     const middleProbe = await probeVideo(middlePath);
 
-    const shouldIntro = introEnabled && Boolean(providedIntro);
-    const shouldOutro = outroEnabled && Boolean(providedOutro);
+    const shouldIntro = introEnabled;
+    const shouldOutro = outroEnabled;
     let introImagePath: string | null = null;
     let outroImagePath: string | null = null;
 
     if (shouldIntro) {
+      // Reuse the frames the user just generated — do not discard them on Apply.
       const intro = await frameForVideo({
         position: 'intro',
         contentId: input.contentId,
         title: content.title,
         platform: content.platform,
         existingUrl: providedIntro,
-        prompt: input.introPrompt,
+        prompt: introPrompt,
         width: probe.width,
         height: probe.height,
         branding: brandingRow,
+        forceRegenerateSystemFrames: false,
       });
       introFrameUrl = intro.url;
       let introBytes = await fitGraphic(intro.bytes, probe.width, probe.height, introPlate);
-      if (hasLogoOverlays(brandingRow) && !/\/templates\//.test(intro.url)) {
+      if (hasLogoOverlays(brandingRow) && !intro.logosIntegrated) {
         introBytes = await compositeLogoOverlays(introBytes, brandingRow, probe.width, probe.height);
       }
       introImagePath = path.join(dir, 'intro-card.png');
@@ -331,14 +573,15 @@ export async function applyTemplateFrames(input: ApplyTemplateFramesInput) {
         title: content.title,
         platform: content.platform,
         existingUrl: providedOutro,
-        prompt: input.outroPrompt,
+        prompt: outroPrompt,
         width: probe.width,
         height: probe.height,
         branding: brandingRow,
+        forceRegenerateSystemFrames: false,
       });
       outroFrameUrl = outro.url;
       let outroBytes = await fitGraphic(outro.bytes, probe.width, probe.height, outroPlate);
-      if (hasLogoOverlays(brandingRow) && !/\/templates\//.test(outro.url)) {
+      if (hasLogoOverlays(brandingRow) && !outro.logosIntegrated) {
         outroBytes = await compositeLogoOverlays(outroBytes, brandingRow, probe.width, probe.height);
       }
       outroImagePath = path.join(dir, 'outro-card.png');
@@ -363,13 +606,16 @@ export async function applyTemplateFrames(input: ApplyTemplateFramesInput) {
       outroDuration,
     });
     const framedProbe = await probeVideo(outputPath);
+    const hardExpected =
+      (shouldIntro ? introDuration : 0)
+      + (middleProbe.duration || probe.duration)
+      + (shouldOutro ? outroDuration : 0);
     logger.info('apply-template-frames', 'Framed video duration', {
       contentId: input.contentId,
       duration: framedProbe.duration,
-      expected:
-        (shouldIntro ? introDuration : 0)
-        + (middleProbe.duration || probe.duration)
-        + (shouldOutro ? outroDuration : 0),
+      hardConcatExpected: hardExpected,
+      // Soft xfade shortens joins vs hard concat.
+      softBlendExpectedApprox: hardExpected - ((shouldIntro ? 1 : 0) + (shouldOutro ? 1 : 0)) * 0.5,
       outroIncluded: shouldOutro,
     });
     return uploadVideo(await readFile(outputPath), input.contentId);
@@ -384,14 +630,12 @@ export async function applyTemplateFrames(input: ApplyTemplateFramesInput) {
       outro_frame_url: outroFrameUrl,
       intro_frame_duration: introDuration,
       outro_frame_duration: outroDuration,
-      original_media_url: content.original_media_url || originalUrl,
-      template_source_url: originalUrl,
+      // Keep the unframed source stable across re-applies so editing never re-wraps a branded file.
+      original_media_url: content.original_media_url || content.template_source_url || originalUrl,
+      template_source_url: content.template_source_url || content.original_media_url || originalUrl,
       template_frames_applied: true,
       preprocessing_status: 'completed',
-      watermark_logo_url: brandingRow.company_logo_url || null,
-      vendor_logo_url: brandingRow.vendor_logo_url || null,
-      watermark_website_url: brandingRow.company_website_url || content.watermark_website_url || null,
-      watermark_position: brandingRow.watermark_position || content.watermark_position || 'bottom-right',
+      ...brandingPatch,
     } as never)
     .eq('id', input.contentId)
     .select()

@@ -1,14 +1,30 @@
 import { useRef, useEffect, useState } from 'react';
 import { ExternalLink } from 'lucide-react';
 
+function positionClasses(position?: string | null) {
+  switch (position || 'bottom-right') {
+    case 'top-left':
+      return 'top-4 left-4';
+    case 'top-right':
+      return 'top-4 right-4';
+    case 'bottom-left':
+      return 'bottom-4 left-4';
+    case 'bottom-right':
+    default:
+      return 'bottom-4 right-4';
+  }
+}
+
 interface VideoPlayerProps {
   src: string;
   className?: string;
   controls?: boolean;
   muted?: boolean;
   watermarkLogoUrl?: string | null;
+  vendorLogoUrl?: string | null;
   watermarkWebsiteUrl?: string | null;
   watermarkPosition?: string | null;
+  vendorLogoPosition?: string | null;
   introFrameUrl?: string | null;
   outroFrameUrl?: string | null;
   introDuration?: number;
@@ -23,8 +39,10 @@ export function VideoPlayer({
   controls = true,
   muted = false,
   watermarkLogoUrl,
+  vendorLogoUrl,
   watermarkWebsiteUrl,
   watermarkPosition = 'bottom-right',
+  vendorLogoPosition = 'bottom-left',
   introFrameUrl,
   outroFrameUrl,
   introDuration = 3,
@@ -33,14 +51,16 @@ export function VideoPlayer({
   brandingBaked = false,
 }: VideoPlayerProps) {
   const effectiveLogoUrl = watermarkLogoUrl || null;
+  const effectiveVendorUrl = vendorLogoUrl || null;
   const effectiveWebsiteUrl = watermarkWebsiteUrl || null;
-  const effectivePosition = watermarkPosition || 'bottom-right';
+  const platformPos = watermarkPosition || 'bottom-right';
+  const vendorPos = vendorLogoPosition || 'bottom-left';
+  const sameCorner = Boolean(effectiveLogoUrl && effectiveVendorUrl && platformPos === vendorPos);
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const skipIntroRef = useRef(false);
   const introTimerRef = useRef<number | null>(null);
   const outroTimerRef = useRef<number | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [aspectRatio, setAspectRatio] = useState<number | null>(null);
   const [templatePhase, setTemplatePhase] = useState<'idle' | 'intro' | 'video' | 'outro'>('idle');
@@ -65,7 +85,6 @@ export function VideoPlayer({
     };
 
     const handlePlay = () => {
-      setIsPlaying(true);
       if (showIntroPreview && !skipIntroRef.current) {
         skipIntroRef.current = true;
         video.pause();
@@ -76,9 +95,7 @@ export function VideoPlayer({
         }, Math.max(1, introDuration) * 1000);
       }
     };
-    const handlePause = () => setIsPlaying(false);
     const handleEnded = () => {
-      setIsPlaying(false);
       skipIntroRef.current = false;
       if (showOutroPreview) {
         setTemplatePhase('outro');
@@ -87,16 +104,12 @@ export function VideoPlayer({
         }, Math.max(1, outroDuration) * 1000);
       }
     };
-    // Handle fullscreen changes
     const handleFullscreenChange = () => {
       setIsFullscreen(!!document.fullscreenElement);
     };
 
     video.addEventListener('play', handlePlay);
-    video.addEventListener('pause', handlePause);
     video.addEventListener('ended', handleEnded);
-    
-    // Listen for fullscreen changes
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
     document.addEventListener('mozfullscreenchange', handleFullscreenChange);
@@ -105,7 +118,6 @@ export function VideoPlayer({
     return () => {
       clearTimers();
       video.removeEventListener('play', handlePlay);
-      video.removeEventListener('pause', handlePause);
       video.removeEventListener('ended', handleEnded);
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
       document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
@@ -114,28 +126,19 @@ export function VideoPlayer({
     };
   }, [src, showIntroPreview, showOutroPreview, introDuration, outroDuration]);
 
-  const getPositionClasses = () => {
-    switch (effectivePosition) {
-      case 'top-left':
-        return 'top-4 left-4';
-      case 'top-right':
-        return 'top-4 right-4';
-      case 'bottom-left':
-        return 'bottom-4 left-4';
-      case 'bottom-right':
-      default:
-        return 'bottom-4 right-4';
-    }
-  };
-
   const handleWatermarkClick = () => {
     if (effectiveWebsiteUrl) {
       window.open(effectiveWebsiteUrl, '_blank', 'noopener,noreferrer');
     }
   };
 
-  const showWatermark = !brandingBaked && effectiveLogoUrl && isPlaying;
-  const showClickable = !brandingBaked && effectiveWebsiteUrl && isPlaying;
+  // Preview logos only on intro/outro — not during the main clip.
+  const showLogosOnTemplate =
+    templatePhase === 'intro' || templatePhase === 'outro';
+  const showPlatform = !brandingBaked && effectiveLogoUrl && showLogosOnTemplate;
+  const showVendor = !brandingBaked && effectiveVendorUrl && showLogosOnTemplate;
+  const showClickable = !brandingBaked && effectiveWebsiteUrl && showLogosOnTemplate;
+  const posMode = isFullscreen ? 'fixed' : 'absolute';
 
   return (
     <div
@@ -168,31 +171,27 @@ export function VideoPlayer({
           <img src={outroFrameUrl} alt="Outro template" className="max-w-full max-h-full w-full h-full object-contain" />
         </div>
       )}
-      
-      {/* Watermark Overlay */}
-      {showWatermark && (
+
+      {showPlatform && (
         <div
-          className={`${isFullscreen ? 'fixed' : 'absolute'} ${getPositionClasses()} transition-opacity duration-300 ${
+          className={`${posMode} ${positionClasses(platformPos)} transition-opacity duration-300 ${
             showClickable ? 'cursor-pointer hover:opacity-80' : ''
           }`}
           onClick={showClickable ? handleWatermarkClick : undefined}
           style={{
             pointerEvents: showClickable ? 'auto' : 'none',
-            zIndex: 9999, // Very high z-index to ensure visibility in fullscreen
+            zIndex: 9999,
           }}
         >
-          <div className="bg-black/50 backdrop-blur-sm rounded-lg p-2 flex items-center gap-2">
-            {effectiveLogoUrl && (
-              <img
-                src={effectiveLogoUrl}
-                alt="Company logo"
-                className="h-8 w-auto object-contain max-w-[120px]"
-                onError={(e) => {
-                  // Hide image on error
-                  (e.target as HTMLImageElement).style.display = 'none';
-                }}
-              />
-            )}
+          <div className="flex items-center gap-2 drop-shadow-[0_1px_3px_rgba(0,0,0,0.45)]">
+            <img
+              src={effectiveLogoUrl!}
+              alt="Platform logo"
+              className="h-9 w-auto object-contain max-w-[130px] opacity-90"
+              onError={(e) => {
+                (e.target as HTMLImageElement).style.display = 'none';
+              }}
+            />
             {showClickable && (
               <div className="flex items-center gap-1 text-white text-xs font-medium">
                 <span>Visit Website</span>
@@ -203,14 +202,37 @@ export function VideoPlayer({
         </div>
       )}
 
-      {/* Website Link Overlay (if no logo but website URL provided) */}
+      {showVendor && (
+        <div
+          className={`${posMode} ${positionClasses(vendorPos)}`}
+          style={{
+            pointerEvents: 'none',
+            zIndex: 9999,
+            ...(sameCorner
+              ? platformPos.startsWith('top')
+                ? { marginTop: '3.25rem' }
+                : { marginBottom: '3.25rem' }
+              : {}),
+          }}
+        >
+          <div className="drop-shadow-[0_1px_3px_rgba(0,0,0,0.45)]">
+            <img
+              src={effectiveVendorUrl!}
+              alt="Vendor logo"
+              className="h-9 w-auto object-contain max-w-[130px] opacity-90"
+              onError={(e) => {
+                (e.target as HTMLImageElement).style.display = 'none';
+              }}
+            />
+          </div>
+        </div>
+      )}
+
       {!effectiveLogoUrl && showClickable && (
         <div
-          className={`${isFullscreen ? 'fixed' : 'absolute'} ${getPositionClasses()}`}
+          className={`${posMode} ${positionClasses(platformPos)}`}
           onClick={handleWatermarkClick}
-          style={{
-            zIndex: 9999, // Very high z-index to ensure visibility in fullscreen
-          }}
+          style={{ zIndex: 9999 }}
         >
           <div className="bg-primary/90 hover:bg-primary text-white rounded-lg px-4 py-2 flex items-center gap-2 cursor-pointer transition-colors shadow-lg">
             <span className="text-sm font-medium">Visit Website</span>

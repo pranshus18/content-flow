@@ -204,8 +204,10 @@ export function ExportPostDialog({
                     controls
                     muted
                     watermarkLogoUrl={content?.watermark_logo_url}
+                    vendorLogoUrl={content?.vendor_logo_url}
                     watermarkWebsiteUrl={content?.watermark_website_url}
                     watermarkPosition={content?.watermark_position}
+                    vendorLogoPosition={content?.vendor_logo_position}
                     brandingBaked={content?.preprocessing_status === 'completed'}
                   />
                 ) : (
@@ -213,8 +215,10 @@ export function ExportPostDialog({
                     src={displayMedia}
                     alt={content?.title || 'Media'}
                     watermarkLogoUrl={content?.watermark_logo_url}
+                    vendorLogoUrl={content?.vendor_logo_url}
                     watermarkWebsiteUrl={content?.watermark_website_url}
                     watermarkPosition={content?.watermark_position}
+                    vendorLogoPosition={content?.vendor_logo_position}
                     brandingBaked={content?.preprocessing_status === 'completed'}
                   />
                 )}

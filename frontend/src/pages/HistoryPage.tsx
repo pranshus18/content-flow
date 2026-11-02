@@ -215,8 +215,10 @@ export default function HistoryPage() {
                         src={displayMedia || ''}
                         controls
                         watermarkLogoUrl={selectedContent.watermark_logo_url}
+                        vendorLogoUrl={selectedContent.vendor_logo_url}
                         watermarkWebsiteUrl={selectedContent.watermark_website_url}
                         watermarkPosition={selectedContent.watermark_position}
+                        vendorLogoPosition={selectedContent.vendor_logo_position}
                         brandingBaked={selectedContent.preprocessing_status === 'completed'}
                       />
                     </div>
@@ -226,8 +228,10 @@ export default function HistoryPage() {
                       alt={selectedContent.title}
                       className="max-w-full max-h-[90vh]"
                       watermarkLogoUrl={selectedContent.watermark_logo_url}
+                      vendorLogoUrl={selectedContent.vendor_logo_url}
                       watermarkWebsiteUrl={selectedContent.watermark_website_url}
                       watermarkPosition={selectedContent.watermark_position}
+                      vendorLogoPosition={selectedContent.vendor_logo_position}
                       brandingBaked={selectedContent.preprocessing_status === 'completed'}
                     />
                   );
@@ -313,8 +317,10 @@ function ContentCard({
                   controls
                   muted
                   watermarkLogoUrl={content.watermark_logo_url}
+                  vendorLogoUrl={content.vendor_logo_url}
                   watermarkWebsiteUrl={content.watermark_website_url}
                   watermarkPosition={content.watermark_position}
+                  vendorLogoPosition={content.vendor_logo_position}
                   brandingBaked={content.preprocessing_status === 'completed'}
                 />
               </div>
@@ -328,8 +334,10 @@ function ContentCard({
                   alt={content.title}
                   className="w-full h-full cursor-pointer hover:opacity-90 transition-opacity"
                   watermarkLogoUrl={content.watermark_logo_url}
+                  vendorLogoUrl={content.vendor_logo_url}
                   watermarkWebsiteUrl={content.watermark_website_url}
                   watermarkPosition={content.watermark_position}
+                  vendorLogoPosition={content.vendor_logo_position}
                   brandingBaked={content.preprocessing_status === 'completed'}
                 />
               </div>

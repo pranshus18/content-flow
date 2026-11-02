@@ -5,31 +5,37 @@ type Position = 'intro' | 'outro';
 
 const INTRO_EXAMPLES = [
   {
-    label: 'Luxury split intro',
-    prompt: 'Luxury cinematic intro: navy branded panel on the left with the platform logo and a bold gold headline, product photo on the right, vendor logo in the executed-by bar.',
+    label: 'Luxury cinematic',
+    prompt:
+      'Luxury cinematic intro: deep navy and soft gold accents, elegant serif headline, warm lighting matching the video scene. Leave corners clear for logos.',
   },
   {
     label: 'Product launch',
-    prompt: 'High-energy product launch intro, dark background, large “New Launch” title, product hero in the center, platform logo top-left and vendor logo top-right.',
+    prompt:
+      'High-energy product launch intro, dark background, large readable title, product hero center. Leave corners empty for logos.',
   },
   {
     label: 'Clean studio',
-    prompt: 'Clean white studio intro, soft lighting, product on a pedestal, platform logo bottom-left, short tagline at the top, no clutter.',
+    prompt:
+      'Clean bright studio intro, soft natural light, short tagline, minimal type matching the footage. Do not draw logos.',
   },
 ];
 
 const OUTRO_EXAMPLES = [
   {
-    label: 'Follow us card',
-    prompt: 'Dark cinematic outro, both logos, a large Follow us button in the center, phone number and website underneath, thank-you line at the top.',
+    label: 'Follow us',
+    prompt:
+      'Dark cinematic outro with a large Follow us moment, thank-you line, phone and website readable on mobile. Leave corners clear for logos.',
   },
   {
     label: 'Enquire now',
-    prompt: 'Polished end card over a blurred interior photo, platform logo large in the center, Enquire now button, contact phone, vendor logo in the corner.',
+    prompt:
+      'Polished end card over the real last shot, Enquire now button, contact phone and website. Leave corners empty for logos.',
   },
   {
-    label: 'Partner thank-you',
-    prompt: 'Thank-you outro: “Executed by” with the vendor logo, then “In association with” and the platform logo, gold accents, readable on mobile.',
+    label: 'Thank you',
+    prompt:
+      'Thank-you outro matching the video lighting, soft close, contact details at the bottom. Do not invent logos.',
   },
 ];
 
@@ -46,22 +52,22 @@ export function TemplateFrameAiPrompt({
 }) {
   const examples = position === 'intro' ? INTRO_EXAMPLES : OUTRO_EXAMPLES;
   const placeholder = position === 'intro'
-    ? 'Describe the intro you want, e.g. cinematic gold titles, navy panel with platform logo on the left, product photo on the right'
-    : 'Describe the outro you want, e.g. dark thank-you card, Follow us button, both logos, phone and website at the bottom';
+    ? 'Describe only the intro, e.g. cinematic opening title matching the kitchen scene'
+    : 'Describe only the outro, e.g. thank-you card with phone 95857499589 and Enquire now';
 
   return (
     <div className="space-y-2">
       <Label htmlFor={`${position}-ai-prompt`} className="text-sm font-semibold">
-        AI prompt for this {position}
+        AI prompt for {position}
       </Label>
       <p className="text-xs text-muted-foreground">
-        Write how this {position} should look. Generate with AI follows this description.
+        Regenerating this {position} will not change the other frame.
       </p>
       <Textarea
         id={`${position}-ai-prompt`}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        rows={4}
+        rows={3}
         disabled={disabled}
         placeholder={placeholder}
         className="bg-secondary border-border resize-none text-sm"

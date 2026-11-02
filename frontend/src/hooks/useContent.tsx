@@ -33,6 +33,7 @@ export interface ContentItem {
   vendor_logo_url?: string | null;
   watermark_website_url: string | null;
   watermark_position: string | null;
+  vendor_logo_position?: string | null;
   intro_frame_url?: string | null;
   outro_frame_url?: string | null;
   intro_frame_duration?: number | null;
@@ -257,6 +258,7 @@ function useContentController() {
     vendorLogoUrl?: string,
     watermarkWebsiteUrl?: string,
     watermarkPosition?: string,
+    vendorLogoPosition?: string,
     templateFrames?: {
       intro_frame_url?: string | null;
       outro_frame_url?: string | null;
@@ -271,6 +273,7 @@ function useContentController() {
       vendor_logo_url: vendorLogoUrl || null,
       watermark_website_url: watermarkWebsiteUrl || null,
       watermark_position: watermarkPosition || null,
+      vendor_logo_position: vendorLogoPosition || null,
       ...(templateFrames
         ? {
             intro_frame_url: templateFrames.intro_frame_url || null,

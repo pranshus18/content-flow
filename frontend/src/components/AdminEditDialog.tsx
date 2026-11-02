@@ -9,9 +9,8 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeBackend } from '@/lib/backend';
 import { errorMessage } from '@/lib/utils';
-import { Instagram, Facebook, Youtube, Image as ImageIcon, Sparkles, Wand2, Loader2, Upload, Link as LinkIcon, Download } from 'lucide-react';
+import { Instagram, Facebook, Youtube, Image as ImageIcon, Sparkles, Wand2, Loader2, Download } from 'lucide-react';
 import { ExportPostDialog } from '@/components/ExportPostDialog';
-import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { VideoPlayer } from '@/components/VideoPlayer';
 import { ImageViewer } from '@/components/ImageViewer';
@@ -30,20 +29,16 @@ interface AdminEditDialogProps {
     vendorLogoUrl?: string,
     watermarkWebsiteUrl?: string,
     watermarkPosition?: string,
+    vendorLogoPosition?: string,
     templateFrames?: {
       intro_frame_url?: string | null;
       outro_frame_url?: string | null;
       intro_frame_duration?: number;
       outro_frame_duration?: number;
     }
-  ) => void;
+  ) => void | Promise<void>;
   onContentUpdated?: (content: ContentItem) => void;
 }
-
-const platformIcons: Record<string, any> = {
-  instagram: Instagram,
-  facebook: Facebook,
-};
 
 export function AdminEditDialog({ open, onOpenChange, content, onSave, onContentUpdated }: AdminEditDialogProps) {
   const [adminDescription, setAdminDescription] = useState('');
@@ -54,6 +49,7 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
   const [vendorLogoUrl, setVendorLogoUrl] = useState('');
   const [watermarkWebsiteUrl, setWatermarkWebsiteUrl] = useState('');
   const [watermarkPosition, setWatermarkPosition] = useState('bottom-right');
+  const [vendorLogoPosition, setVendorLogoPosition] = useState('bottom-left');
   const [uploadingLogo, setUploadingLogo] = useState<string | null>(null);
   const [followCtaEnabled, setFollowCtaEnabled] = useState(true);
   const [followCtaText, setFollowCtaText] = useState('Follow us');
@@ -66,8 +62,78 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
   const [introPrompt, setIntroPrompt] = useState('');
   const [outroPrompt, setOutroPrompt] = useState('');
   const [exportOpen, setExportOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [previewMediaUrl, setPreviewMediaUrl] = useState('');
+  // True when logos/CTA/frames changed since last successful bake — Apply or Save bakes once.
+  const [brandingDirty, setBrandingDirty] = useState(false);
   const { toast } = useToast();
   const initializedForId = useRef<string | null>(null);
+  const suppressDirtyRef = useRef(false);
+
+  const markBrandingDirty = () => {
+    if (!suppressDirtyRef.current) setBrandingDirty(true);
+  };
+
+  const setWatermarkLogoUrlTracked = (value: string) => {
+    setWatermarkLogoUrl(value);
+    markBrandingDirty();
+  };
+  const setVendorLogoUrlTracked = (value: string) => {
+    setVendorLogoUrl(value);
+    markBrandingDirty();
+  };
+  const setWatermarkWebsiteUrlTracked = (value: string) => {
+    setWatermarkWebsiteUrl(value);
+    markBrandingDirty();
+  };
+  const setWatermarkPositionTracked = (value: string) => {
+    setWatermarkPosition(value);
+    markBrandingDirty();
+  };
+  const setVendorLogoPositionTracked = (value: string) => {
+    setVendorLogoPosition(value);
+    markBrandingDirty();
+  };
+  const setFollowCtaEnabledTracked = (value: boolean) => {
+    setFollowCtaEnabled(value);
+    markBrandingDirty();
+  };
+  const setFollowCtaTextTracked = (value: string) => {
+    setFollowCtaText(value);
+    markBrandingDirty();
+  };
+  const setFollowCtaStartTracked = (value: number | '') => {
+    setFollowCtaStart(value);
+    markBrandingDirty();
+  };
+  const setFollowCtaDurationTracked = (value: number) => {
+    setFollowCtaDuration(value);
+    markBrandingDirty();
+  };
+  const setIntroFrameUrlTracked = (url: string) => {
+    setIntroFrameUrl(url);
+    markBrandingDirty();
+  };
+  const setOutroFrameUrlTracked = (url: string) => {
+    setOutroFrameUrl(url);
+    markBrandingDirty();
+  };
+  const setIntroDurationTracked = (value: number) => {
+    setIntroDuration(value);
+    markBrandingDirty();
+  };
+  const setOutroDurationTracked = (value: number) => {
+    setOutroDuration(value);
+    markBrandingDirty();
+  };
+  const setIntroPromptTracked = (value: string) => {
+    setIntroPrompt(value);
+    markBrandingDirty();
+  };
+  const setOutroPromptTracked = (value: string) => {
+    setOutroPrompt(value);
+    markBrandingDirty();
+  };
 
   useEffect(() => {
     if (!open || !content) {
@@ -78,6 +144,7 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
     if (initializedForId.current === content.id) return;
     initializedForId.current = content.id;
 
+    suppressDirtyRef.current = true;
     setAdminDescription(content.admin_description || '');
     setAdminNotes(content.admin_notes || '');
     const normalizedPlatform =
@@ -89,6 +156,7 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
     setVendorLogoUrl(content.vendor_logo_url || '');
     setWatermarkWebsiteUrl(content.watermark_website_url || '');
     setWatermarkPosition(content.watermark_position || 'bottom-right');
+    setVendorLogoPosition(content.vendor_logo_position || 'bottom-left');
     setFollowCtaEnabled(false);
     setFollowCtaText('Follow us');
     setFollowCtaStart('');
@@ -97,7 +165,32 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
     setOutroFrameUrl(content.outro_frame_url || '');
     setIntroDuration(content.intro_frame_duration || 3);
     setOutroDuration(content.outro_frame_duration || 5);
+    setIntroPrompt('');
+    setOutroPrompt('');
+    setBrandingDirty(false);
+    setPreviewMediaUrl(content.enhanced_media_url || content.media_url || '');
+    suppressDirtyRef.current = false;
   }, [open, content]);
+
+  const syncAppliedMedia = (updated: ContentItem) => {
+    const nextMedia = updated.enhanced_media_url || updated.media_url || '';
+    if (nextMedia) {
+      setPreviewMediaUrl(`${nextMedia}${nextMedia.includes('?') ? '&' : '?'}t=${Date.now()}`);
+    }
+    suppressDirtyRef.current = true;
+    if (updated.intro_frame_url) setIntroFrameUrl(updated.intro_frame_url);
+    if (updated.outro_frame_url) setOutroFrameUrl(updated.outro_frame_url);
+    if (updated.intro_frame_duration != null) setIntroDuration(updated.intro_frame_duration);
+    if (updated.outro_frame_duration != null) setOutroDuration(updated.outro_frame_duration);
+    if (updated.watermark_logo_url != null) setWatermarkLogoUrl(updated.watermark_logo_url || '');
+    if (updated.vendor_logo_url != null) setVendorLogoUrl(updated.vendor_logo_url || '');
+    if (updated.watermark_website_url != null) setWatermarkWebsiteUrl(updated.watermark_website_url || '');
+    if (updated.watermark_position) setWatermarkPosition(updated.watermark_position);
+    if (updated.vendor_logo_position) setVendorLogoPosition(updated.vendor_logo_position);
+    suppressDirtyRef.current = false;
+    setBrandingDirty(false);
+    onContentUpdated?.(updated);
+  };
 
   const handleGenerateCaption = async () => {
     console.log('Generate with AI button clicked!', { content: !!content, hasDescription: !!content?.description });
@@ -232,13 +325,15 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
         .from('content-media')
         .getPublicUrl(filePath);
 
-      if (kind === 'platform') setWatermarkLogoUrl(publicUrl);
-      else setVendorLogoUrl(publicUrl);
+      if (kind === 'platform') setWatermarkLogoUrlTracked(publicUrl);
+      else setVendorLogoUrlTracked(publicUrl);
+      const uploadedForVideo = content.media_type === 'video'
+        || /\.(mp4|mov|webm|avi|mkv)(\?|$)/i.test(content.media_url || content.enhanced_media_url || '');
       toast({
         title: 'Logo Uploaded',
-        description: kind === 'vendor'
-          ? 'Vendor logo is ready. Save to apply it on this post.'
-          : 'Platform logo is ready. Save to apply it on this post.',
+        description: uploadedForVideo
+          ? 'Logo ready. Click Apply to video once — that saves the branded clip.'
+          : 'Logo ready. Click Apply to image once — that saves the branded image.',
       });
     } catch (error: unknown) {
       console.error('Error uploading logo:', error);
@@ -265,27 +360,98 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
       return;
     }
 
-    onSave(
-      adminDescription,
-      adminNotes,
-      platform,
-      watermarkLogoUrl || undefined,
-      vendorLogoUrl || undefined,
-      watermarkWebsiteUrl || undefined,
-      watermarkPosition,
-      {
-        intro_frame_url: introFrameUrl || null,
-        outro_frame_url: outroFrameUrl || null,
-        intro_frame_duration: introDuration,
-        outro_frame_duration: outroDuration,
-      },
-    );
-    onOpenChange(false);
+    if (!content) return;
+
+    setSaving(true);
+    try {
+      await onSave(
+        adminDescription,
+        adminNotes,
+        platform,
+        watermarkLogoUrl || undefined,
+        vendorLogoUrl || undefined,
+        watermarkWebsiteUrl || undefined,
+        watermarkPosition,
+        vendorLogoPosition,
+        {
+          intro_frame_url: introFrameUrl || null,
+          outro_frame_url: outroFrameUrl || null,
+          intro_frame_duration: introDuration,
+          outro_frame_duration: outroDuration,
+        },
+      );
+
+      // Only bake when branding changed since last Apply/Save — never re-encode an already-saved video.
+      const hasBrandingWork = Boolean(
+        watermarkLogoUrl
+        || vendorLogoUrl
+        || introFrameUrl
+        || outroFrameUrl
+        || introPrompt.trim()
+        || outroPrompt.trim()
+        || followCtaEnabled,
+      );
+      if (brandingDirty && hasBrandingWork) {
+        toast({
+          title: 'Saving branded video',
+          description: 'Baking logos, intro, and outro into the media once…',
+        });
+
+        const data = await invokeBackend<{
+          success?: boolean;
+          error?: string;
+          content?: ContentItem;
+        }>('apply-template-frames', {
+          contentId: content.id,
+          introFrameUrl: introFrameUrl || null,
+          outroFrameUrl: outroFrameUrl || null,
+          introDuration,
+          outroDuration,
+          introPrompt: introPrompt || null,
+          outroPrompt: outroPrompt || null,
+          branding: {
+            company_logo_url: watermarkLogoUrl || null,
+            vendor_logo_url: vendorLogoUrl || null,
+            company_website_url: watermarkWebsiteUrl || null,
+            watermark_position: watermarkPosition,
+            vendor_logo_position: vendorLogoPosition,
+            follow_cta_enabled: followCtaEnabled,
+            follow_cta_text: followCtaText || 'Follow us',
+            follow_cta_start_seconds: followCtaStart === '' ? null : Number(followCtaStart),
+            follow_cta_duration: followCtaDuration,
+            watermark_enabled: true,
+          },
+        });
+
+        if (!data?.success) {
+          throw new Error(data?.error || 'Could not apply branding to the media.');
+        }
+
+        if (data.content) {
+          syncAppliedMedia(data.content);
+        }
+
+        toast({
+          title: 'Saved with full branding',
+          description: 'Branded media is saved. No need to apply again.',
+        });
+      }
+
+      onOpenChange(false);
+    } catch (error: unknown) {
+      toast({
+        title: 'Could not save branding',
+        description: errorMessage(error, 'Logo positions were not applied. Try again.'),
+        variant: 'destructive',
+      });
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (!content) return null;
 
-  const displayMedia = content.enhanced_media_url || content.media_url;
+  const displayMedia = previewMediaUrl || content.enhanced_media_url || content.media_url;
   // Detect if content is a video - check media_type first, then file extension
   const isVideo = content.media_type === 'video' || 
                  displayMedia?.toLowerCase().includes('.mp4') || 
@@ -294,15 +460,8 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
                  displayMedia?.toLowerCase().includes('.avi') ||
                  displayMedia?.toLowerCase().includes('.mkv') ||
                  content.media_url?.toLowerCase().includes('video');
-  
-  // Debug log (remove in production)
-  if (process.env.NODE_ENV === 'development') {
-    console.log('AdminEditDialog - Video detection:', {
-      media_type: content.media_type,
-      displayMedia: displayMedia?.substring(0, 50),
-      isVideo,
-    });
-  }
+
+  const brandingBaked = Boolean(content.template_frames_applied) && !brandingDirty;
 
   return (
     <>
@@ -364,27 +523,32 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
                                    content.media_url?.toLowerCase().includes('video');
                     return isVideo ? (
                       <VideoPlayer
+                        key={displayMedia}
                         src={displayMedia}
                         controls
                         muted
                         watermarkLogoUrl={watermarkLogoUrl || undefined}
+                        vendorLogoUrl={vendorLogoUrl || undefined}
                         watermarkWebsiteUrl={watermarkWebsiteUrl || undefined}
                         watermarkPosition={watermarkPosition}
+                        vendorLogoPosition={vendorLogoPosition}
                         introFrameUrl={introFrameUrl || undefined}
                         outroFrameUrl={outroFrameUrl || undefined}
                         introDuration={introDuration}
                         outroDuration={outroDuration}
-                        previewTemplateFrames={!content.template_frames_applied}
-                        brandingBaked={Boolean(content.template_frames_applied)}
+                        previewTemplateFrames={!brandingBaked}
+                        brandingBaked={brandingBaked}
                       />
                     ) : (
                       <ImageViewer
                         src={displayMedia}
                         alt={content.title}
                         watermarkLogoUrl={watermarkLogoUrl || undefined}
+                        vendorLogoUrl={vendorLogoUrl || undefined}
                         watermarkWebsiteUrl={watermarkWebsiteUrl || undefined}
                         watermarkPosition={watermarkPosition}
-                        brandingBaked={Boolean(content.template_frames_applied)}
+                        vendorLogoPosition={vendorLogoPosition}
+                        brandingBaked={brandingBaked}
                       />
                     );
                   })()
@@ -496,162 +660,50 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
             />
           </div>
 
-          <div className="space-y-4 p-4 bg-primary/5 rounded-lg border border-primary/20">
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-primary" />
-              <Label className="text-base font-semibold">Ready-to-post branding</Label>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Upload logos here, then generate intro and outro below. Everything is baked into the file when you apply or save.
-            </p>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <EditLogoField
-                id="platform-logo"
-                label="Platform / company logo"
-                value={watermarkLogoUrl}
-                uploading={uploadingLogo === 'platform'}
-                disabled={uploadingLogo !== null}
-                onUrlChange={setWatermarkLogoUrl}
-                onFileChange={(e) => handleLogoUpload(e, 'platform')}
-              />
-              <EditLogoField
-                id="vendor-logo"
-                label="Vendor logo"
-                value={vendorLogoUrl}
-                uploading={uploadingLogo === 'vendor'}
-                disabled={uploadingLogo !== null}
-                onUrlChange={setVendorLogoUrl}
-                onFileChange={(e) => handleLogoUpload(e, 'vendor')}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="watermark-website">
-                <div className="flex items-center gap-2">
-                  <LinkIcon className="w-4 h-4" />
-                  Company Website URL
-                </div>
-              </Label>
-              <Input
-                id="watermark-website"
-                type="url"
-                placeholder="https://yourcompany.com"
-                value={watermarkWebsiteUrl}
-                onChange={(e) => setWatermarkWebsiteUrl(e.target.value)}
-                className="bg-secondary border-border"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="watermark-position">Platform logo position</Label>
-              <Select value={watermarkPosition} onValueChange={setWatermarkPosition}>
-                <SelectTrigger className="bg-secondary border-border">
-                  <SelectValue placeholder="Select position" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="top-left">Top Left</SelectItem>
-                  <SelectItem value="top-right">Top Right</SelectItem>
-                  <SelectItem value="bottom-left">Bottom Left</SelectItem>
-                  <SelectItem value="bottom-right">Bottom Right</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                Vendor logo is placed on the opposite corner.
-              </p>
-            </div>
-
-            <div className="space-y-3 pt-2 border-t border-primary/20">
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label>Follow CTA at a specific time</Label>
-                  <p className="text-xs text-muted-foreground">Baked into the video at this timestamp, and onto images.</p>
-                </div>
-                <Switch checked={followCtaEnabled} onCheckedChange={setFollowCtaEnabled} />
-              </div>
-              {followCtaEnabled && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <div className="space-y-2">
-                    <Label htmlFor="follow-cta-text">CTA text</Label>
-                    <Input
-                      id="follow-cta-text"
-                      placeholder="Follow us"
-                      value={followCtaText}
-                      onChange={(e) => setFollowCtaText(e.target.value)}
-                      className="bg-secondary border-border"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="follow-cta-start">Show at (seconds)</Label>
-                    <Input
-                      id="follow-cta-start"
-                      type="number"
-                      min={0}
-                      step={0.5}
-                      placeholder="Auto (mid-video)"
-                      value={followCtaStart}
-                      onChange={(e) => {
-                        const raw = e.target.value;
-                        setFollowCtaStart(raw === '' ? '' : Number(raw));
-                      }}
-                      className="bg-secondary border-border"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="follow-cta-duration">Stay on screen</Label>
-                    <Input
-                      id="follow-cta-duration"
-                      type="number"
-                      min={1}
-                      max={12}
-                      value={followCtaDuration}
-                      onChange={(e) => setFollowCtaDuration(Number(e.target.value) || 4)}
-                      className="bg-secondary border-border"
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {isVideo && (
-            <TemplateFramesSection
-              content={content}
-              platform={platform}
-              introFrameUrl={introFrameUrl}
-              outroFrameUrl={outroFrameUrl}
-              introDuration={introDuration}
-              outroDuration={outroDuration}
-              introPrompt={introPrompt}
-              outroPrompt={outroPrompt}
-              branding={{
-                company_logo_url: watermarkLogoUrl || null,
-                vendor_logo_url: vendorLogoUrl || null,
-                company_website_url: watermarkWebsiteUrl || null,
-                watermark_position: watermarkPosition,
-                follow_cta_enabled: followCtaEnabled,
-                follow_cta_text: followCtaText || 'Follow us',
-                follow_cta_start_seconds: followCtaStart === '' ? null : Number(followCtaStart),
-                follow_cta_duration: followCtaDuration,
-              }}
-              onIntroFrameUrlChange={setIntroFrameUrl}
-              onOutroFrameUrlChange={setOutroFrameUrl}
-              onIntroDurationChange={setIntroDuration}
-              onOutroDurationChange={setOutroDuration}
-              onIntroPromptChange={setIntroPrompt}
-              onOutroPromptChange={setOutroPrompt}
-              onApplied={(updated) => {
-                if (updated.intro_frame_url) setIntroFrameUrl(updated.intro_frame_url);
-                if (updated.outro_frame_url) setOutroFrameUrl(updated.outro_frame_url);
-                onContentUpdated?.(updated);
-              }}
-            />
-          )}
+          <TemplateFramesSection
+            content={content}
+            platform={platform}
+            isVideo={isVideo}
+            watermarkLogoUrl={watermarkLogoUrl}
+            vendorLogoUrl={vendorLogoUrl}
+            watermarkWebsiteUrl={watermarkWebsiteUrl}
+            watermarkPosition={watermarkPosition}
+            vendorLogoPosition={vendorLogoPosition}
+            uploadingLogo={uploadingLogo}
+            onWatermarkLogoUrlChange={setWatermarkLogoUrlTracked}
+            onVendorLogoUrlChange={setVendorLogoUrlTracked}
+            onWatermarkWebsiteUrlChange={setWatermarkWebsiteUrlTracked}
+            onWatermarkPositionChange={setWatermarkPositionTracked}
+            onVendorLogoPositionChange={setVendorLogoPositionTracked}
+            onPlatformLogoFile={(e) => handleLogoUpload(e, 'platform')}
+            onVendorLogoFile={(e) => handleLogoUpload(e, 'vendor')}
+            followCtaEnabled={followCtaEnabled}
+            followCtaText={followCtaText}
+            followCtaStart={followCtaStart}
+            followCtaDuration={followCtaDuration}
+            onFollowCtaEnabledChange={setFollowCtaEnabledTracked}
+            onFollowCtaTextChange={setFollowCtaTextTracked}
+            onFollowCtaStartChange={setFollowCtaStartTracked}
+            onFollowCtaDurationChange={setFollowCtaDurationTracked}
+            introFrameUrl={introFrameUrl}
+            outroFrameUrl={outroFrameUrl}
+            introDuration={introDuration}
+            outroDuration={outroDuration}
+            introPrompt={introPrompt}
+            outroPrompt={outroPrompt}
+            onIntroFrameUrlChange={setIntroFrameUrlTracked}
+            onOutroFrameUrlChange={setOutroFrameUrlTracked}
+            onIntroDurationChange={setIntroDurationTracked}
+            onOutroDurationChange={setOutroDurationTracked}
+            onIntroPromptChange={setIntroPromptTracked}
+            onOutroPromptChange={setOutroPromptTracked}
+            onApplied={syncAppliedMedia}
+          />
 
           </div>
 
           <DialogFooter className="flex-shrink-0 pt-4 border-t border-border mt-4">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
               Cancel
             </Button>
             {(content.enhanced_media_url || content.media_url) && (
@@ -659,14 +711,21 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
                 type="button"
                 variant="outline"
                 onClick={() => setExportOpen(true)}
-                disabled={content.preprocessing_status === 'pending'}
+                disabled={saving || content.preprocessing_status === 'pending'}
               >
                 <Download className="w-4 h-4 mr-2" />
                 Download for posting
               </Button>
             )}
-            <Button type="submit" className="glow">
-              Save Changes
+            <Button type="submit" className="glow" disabled={saving}>
+              {saving ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Saving…
+                </>
+              ) : (
+                'Save Changes'
+              )}
             </Button>
           </DialogFooter>
         </form>
@@ -680,85 +739,5 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
       platformOverride={platform}
     />
     </>
-  );
-}
-
-function EditLogoField({
-  id,
-  label,
-  value,
-  uploading,
-  disabled,
-  onUrlChange,
-  onFileChange,
-}: {
-  id: string;
-  label: string;
-  value: string;
-  uploading: boolean;
-  disabled: boolean;
-  onUrlChange: (value: string) => void;
-  onFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
-}) {
-  const inputId = `${id}-upload`;
-  return (
-    <div className="space-y-2">
-      <Label htmlFor={id}>{label}</Label>
-      <div className="flex items-center gap-3">
-        <Input
-          id={id}
-          type="text"
-          placeholder="Logo URL or upload image"
-          value={value}
-          onChange={(e) => onUrlChange(e.target.value)}
-          className="bg-secondary border-border"
-        />
-        <input
-          id={inputId}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          disabled={disabled}
-          onChange={onFileChange}
-        />
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={disabled}
-          onClick={() => document.getElementById(inputId)?.click()}
-          className="flex items-center gap-2 shrink-0"
-        >
-          {uploading ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Uploading...
-            </>
-          ) : (
-            <>
-              <Upload className="w-4 h-4" />
-              Upload
-            </>
-          )}
-        </Button>
-        {value ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            disabled={disabled}
-            onClick={() => onUrlChange('')}
-            className="shrink-0"
-          >
-            Remove
-          </Button>
-        ) : null}
-      </div>
-      {value ? (
-        <img src={value} alt={`${label} preview`} className="h-12 w-auto object-contain bg-secondary rounded p-1" />
-      ) : (
-        <p className="text-xs text-muted-foreground">No logo yet. Upload a transparent PNG.</p>
-      )}
-    </div>
   );
 }

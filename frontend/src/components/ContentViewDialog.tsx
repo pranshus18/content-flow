@@ -148,8 +148,10 @@ export function ContentViewDialog({
                     controls
                     muted
                     watermarkLogoUrl={content.watermark_logo_url}
+                    vendorLogoUrl={content.vendor_logo_url}
                     watermarkWebsiteUrl={content.watermark_website_url}
                     watermarkPosition={content.watermark_position}
+                    vendorLogoPosition={content.vendor_logo_position}
                     introFrameUrl={content.intro_frame_url}
                     outroFrameUrl={content.outro_frame_url}
                     introDuration={content.intro_frame_duration || 3}
@@ -162,8 +164,10 @@ export function ContentViewDialog({
                     src={displayMedia}
                     alt={content.title}
                     watermarkLogoUrl={content.watermark_logo_url}
+                    vendorLogoUrl={content.vendor_logo_url}
                     watermarkWebsiteUrl={content.watermark_website_url}
                     watermarkPosition={content.watermark_position}
+                    vendorLogoPosition={content.vendor_logo_position}
                     brandingBaked={content.preprocessing_status === 'completed'}
                   />
                 )}

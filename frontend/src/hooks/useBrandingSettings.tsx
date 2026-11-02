@@ -14,6 +14,7 @@ export interface BrandingSettings {
   company_email: string | null;
   watermark_enabled: boolean;
   watermark_position: string;
+  vendor_logo_position?: string | null;
   end_card_enabled: boolean;
   end_card_duration: number;
   intro_card_enabled?: boolean;

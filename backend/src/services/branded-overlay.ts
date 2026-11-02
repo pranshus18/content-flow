@@ -17,6 +17,7 @@ export type BrandingOverlayRow = {
   follow_cta_duration?: number | string | null;
   watermark_enabled?: boolean | null;
   watermark_position?: string | null;
+  vendor_logo_position?: string | null;
 };
 
 export type PreparedOverlay = {
@@ -123,7 +124,7 @@ export async function normalizeFrameToSize(
   bytes: Buffer,
   width: number,
   height: number,
-  plate?: Buffer | null,
+  _plate?: Buffer | null,
 ) {
   const canvasW = even(width);
   const canvasH = even(height);
@@ -136,42 +137,14 @@ export async function normalizeFrameToSize(
   const croppedMeta = await sharp(cropped).metadata();
   const srcW = croppedMeta.width || canvasW;
   const srcH = croppedMeta.height || canvasH;
-  const sameAspect = Math.abs(srcW / srcH - canvasW / canvasH) / (canvasW / canvasH) <= 0.04;
-  const innerW = sameAspect ? canvasW : even(Math.round(canvasW * 0.92));
-  const innerH = sameAspect ? canvasH : even(Math.round(canvasH * 0.92));
-  const card = await sharp(cropped)
-    .ensureAlpha()
-    .resize(innerW, innerH, {
-      fit: 'contain',
-      background: { r: 0, g: 0, b: 0, alpha: 0 },
+  const sameAspect = Math.abs(srcW / srcH - canvasW / canvasH) / (canvasW / canvasH) <= 0.08;
+  // Full-bleed: fill when aspect matches, cover when it doesn't — no floating 92% card on a plate.
+  return sharp(cropped)
+    .resize(canvasW, canvasH, {
+      fit: sameAspect ? 'fill' : 'cover',
+      position: 'centre',
       kernel: sharp.kernel.lanczos3,
     })
-    .png()
-    .toBuffer();
-
-  const base = plate
-    ? await sharp(plate)
-      .rotate()
-      .resize(canvasW, canvasH, { fit: 'cover', position: 'centre', kernel: sharp.kernel.lanczos3 })
-      .png()
-      .toBuffer()
-    : await sharp({
-      create: {
-        width: canvasW,
-        height: canvasH,
-        channels: 3,
-        background: await sampleBackground(cropped),
-      },
-    })
-      .png()
-      .toBuffer();
-
-  return sharp(base)
-    .composite([{
-      input: card,
-      left: Math.round((canvasW - innerW) / 2),
-      top: Math.round((canvasH - innerH) / 2),
-    }])
     .png()
     .toBuffer();
 }
@@ -184,32 +157,20 @@ function escapeXml(value: string) {
     .replace(/"/g, '&quot;');
 }
 
-function asPosition(value?: string | null): OverlayPosition {
-  switch (value) {
+export function asPosition(value?: string | null, fallback: OverlayPosition = 'bottom-right'): OverlayPosition {
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[_\s]+/g, '-');
+  switch (normalized) {
     case 'top-left':
     case 'top-right':
     case 'bottom-left':
     case 'bottom-right':
     case 'bottom-center':
-      return value;
+      return normalized;
     default:
-      return 'bottom-right';
-  }
-}
-
-function oppositePosition(position: OverlayPosition): OverlayPosition {
-  switch (position) {
-    case 'top-left':
-      return 'top-right';
-    case 'top-right':
-      return 'top-left';
-    case 'bottom-left':
-      return 'bottom-right';
-    case 'bottom-center':
-      return 'top-right';
-    case 'bottom-right':
-    default:
-      return 'bottom-left';
+      return fallback;
   }
 }
 
@@ -258,27 +219,224 @@ export async function loadImageBuffer(url?: string | null) {
   }
 }
 
-async function renderLogoBadge(logoBytes: Buffer, maxW: number, maxH: number) {
-  const innerW = even(Math.max(24, maxW - 20));
-  const innerH = even(Math.max(24, maxH - 20));
-  const fitted = await sharp(logoBytes)
+/** If the logo sits on an opaque black card, turn near-black into transparency so it blends into footage. */
+async function knockOutLogoCardBackground(logoBytes: Buffer) {
+  const { data, info } = await sharp(logoBytes)
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const { width, height, channels } = info;
+  if (channels < 4 || width < 4 || height < 4) return logoBytes;
+
+  const isNearBlack = (i: number) => data[i] <= 28 && data[i + 1] <= 28 && data[i + 2] <= 28;
+  let edgeDark = 0;
+  let edgeCount = 0;
+  const sampleEdge = (x: number, y: number) => {
+    const i = (y * width + x) * channels;
+    edgeCount += 1;
+    if (isNearBlack(i)) edgeDark += 1;
+  };
+  for (let x = 0; x < width; x += Math.max(1, Math.floor(width / 24))) {
+    sampleEdge(x, 0);
+    sampleEdge(x, height - 1);
+  }
+  for (let y = 1; y < height - 1; y += Math.max(1, Math.floor(height / 24))) {
+    sampleEdge(0, y);
+    sampleEdge(width - 1, y);
+  }
+  // Only strip when the asset looks like a black card / sticker plate.
+  if (edgeCount === 0 || edgeDark / edgeCount < 0.45) return logoBytes;
+
+  const out = Buffer.from(data);
+  for (let i = 0; i < out.length; i += channels) {
+    const r = out[i];
+    const g = out[i + 1];
+    const b = out[i + 2];
+    if (r <= 28 && g <= 28 && b <= 28) {
+      out[i + 3] = 0;
+    } else if (r <= 48 && g <= 48 && b <= 48) {
+      // Soften near-black fringe so edges don't leave a hard box.
+      out[i + 3] = Math.round(out[i + 3] * ((Math.max(r, g, b) - 28) / 20));
+    }
+  }
+  return sharp(out, { raw: { width, height, channels: 4 } }).png().toBuffer();
+}
+
+/** Average relative luminance 0–1 for a full image or a region. */
+async function sampleLuminance(
+  imageBytes: Buffer,
+  region?: { left: number; top: number; width: number; height: number },
+) {
+  try {
+    let pipeline = sharp(imageBytes).rotate();
+    if (region) {
+      const meta = await sharp(imageBytes).rotate().metadata();
+      const maxW = meta.width || region.width;
+      const maxH = meta.height || region.height;
+      const left = Math.max(0, Math.min(region.left, maxW - 1));
+      const top = Math.max(0, Math.min(region.top, maxH - 1));
+      const width = Math.max(1, Math.min(region.width, maxW - left));
+      const height = Math.max(1, Math.min(region.height, maxH - top));
+      pipeline = pipeline.extract({ left, top, width, height });
+    }
+    const { data, info } = await pipeline
+      .resize(48, 48, { fit: 'fill' })
+      .removeAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    let sum = 0;
+    const pixels = info.width * info.height;
+    for (let i = 0; i < data.length; i += info.channels) {
+      sum += (0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2]) / 255;
+    }
+    return sum / Math.max(1, pixels);
+  } catch {
+    return 0.45;
+  }
+}
+
+/** Luminance of opaque logo pixels only. */
+async function logoContentLuminance(logoBytes: Buffer) {
+  const { data, info } = await sharp(logoBytes)
+    .ensureAlpha()
+    .resize(64, 64, { fit: 'inside' })
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  let sum = 0;
+  let count = 0;
+  for (let i = 0; i < data.length; i += info.channels) {
+    if (data[i + 3] < 40) continue;
+    sum += (0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2]) / 255;
+    count += 1;
+  }
+  return count ? sum / count : 0.5;
+}
+
+async function tintedHaloFromAlpha(
+  logoBytes: Buffer,
+  rgba: { r: number; g: number; b: number; a: number },
+  blur: number,
+) {
+  const { data, info } = await sharp(logoBytes)
+    .ensureAlpha()
+    .extractChannel('alpha')
+    .blur(blur)
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const out = Buffer.alloc(info.width * info.height * 4);
+  for (let i = 0, p = 0; i < data.length; i += 1, p += 4) {
+    out[p] = rgba.r;
+    out[p + 1] = rgba.g;
+    out[p + 2] = rgba.b;
+    out[p + 3] = Math.round((data[i] / 255) * rgba.a * 255);
+  }
+  return sharp(out, {
+    raw: { width: info.width, height: info.height, channels: 4 },
+  })
+    .png()
+    .toBuffer();
+}
+
+/**
+ * Auto-adapt logo to the local scene color/brightness so it stays readable
+ * on light, dark, or colorful footage without looking like a sticker plate.
+ */
+async function renderLogoBadge(
+  logoBytes: Buffer,
+  maxW: number,
+  maxH: number,
+  sceneLuma = 0.45,
+) {
+  const cleaned = await knockOutLogoCardBackground(logoBytes);
+  let fitted = await sharp(cleaned)
     .rotate()
-    .resize({ width: innerW, height: innerH, fit: 'inside', withoutEnlargement: true })
+    .resize({
+      width: even(Math.max(24, maxW)),
+      height: even(Math.max(24, maxH)),
+      fit: 'inside',
+      withoutEnlargement: true,
+    })
+    .ensureAlpha()
     .png()
     .toBuffer();
-  const meta = await sharp(fitted).metadata();
-  const width = even((meta.width || innerW) + 20);
-  const height = even((meta.height || innerH) + 20);
-  const radius = Math.round(Math.min(width, height) * 0.18);
-  const background = Buffer.from(`
-    <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
-      <rect width="100%" height="100%" rx="${radius}" fill="rgba(7,20,39,0.62)"/>
-    </svg>
-  `);
-  const bytes = await sharp(background)
-    .composite([{ input: fitted, gravity: 'centre' }])
+
+  const logoLuma = await logoContentLuminance(fitted);
+  const contrast = Math.abs(logoLuma - sceneLuma);
+  const sceneIsDark = sceneLuma < 0.42;
+  const sceneIsLight = sceneLuma > 0.58;
+
+  // Push logo brightness away from the background when contrast is weak.
+  if (contrast < 0.22) {
+    if (sceneIsDark) {
+      fitted = await sharp(fitted).modulate({ brightness: 1.28, saturation: 1.05 }).png().toBuffer();
+    } else if (sceneIsLight) {
+      fitted = await sharp(fitted).modulate({ brightness: 0.78, saturation: 1.08 }).png().toBuffer();
+    } else if (logoLuma > sceneLuma) {
+      fitted = await sharp(fitted).modulate({ brightness: 1.12 }).png().toBuffer();
+    } else {
+      fitted = await sharp(fitted).modulate({ brightness: 0.88 }).png().toBuffer();
+    }
+  } else if (sceneIsDark && logoLuma < 0.35) {
+    fitted = await sharp(fitted).modulate({ brightness: 1.18 }).png().toBuffer();
+  } else if (sceneIsLight && logoLuma > 0.7) {
+    fitted = await sharp(fitted).modulate({ brightness: 0.85 }).png().toBuffer();
+  }
+
+  // Soft dual halo (light + dark) keeps marks readable on any color without a hard box.
+  const lightHaloStrength = sceneIsDark ? 0.42 : sceneIsLight ? 0.16 : 0.26;
+  const darkHaloStrength = sceneIsLight ? 0.4 : sceneIsDark ? 0.16 : 0.24;
+  const lightHalo = await tintedHaloFromAlpha(
+    fitted,
+    { r: 255, g: 255, b: 255, a: lightHaloStrength },
+    2.4,
+  );
+  const darkHalo = await tintedHaloFromAlpha(
+    fitted,
+    { r: 0, g: 0, b: 0, a: darkHaloStrength },
+    2.8,
+  );
+
+  const faded = await sharp(fitted)
+    .composite([{
+      input: Buffer.from([255, 255, 255, Math.round(255 * 0.92)]),
+      raw: { width: 1, height: 1, channels: 4 },
+      tile: true,
+      blend: 'dest-in',
+    }])
     .png()
     .toBuffer();
+
+  const meta = await sharp(faded).metadata();
+  const logoW = meta.width || maxW;
+  const logoH = meta.height || maxH;
+  const pad = 10;
+  const width = even(logoW + pad * 2);
+  const height = even(logoH + pad * 2);
+
+  const bytes = await sharp({
+    create: {
+      width,
+      height,
+      channels: 4,
+      background: { r: 0, g: 0, b: 0, alpha: 0 },
+    },
+  })
+    .composite([
+      { input: darkHalo, left: pad + 1, top: pad + 2 },
+      { input: lightHalo, left: pad - 1, top: pad - 1 },
+      { input: faded, left: pad, top: pad },
+    ])
+    .png()
+    .toBuffer();
+
+  logger.info('branded-overlay', 'Adaptive logo grade', {
+    sceneLuma: Number(sceneLuma.toFixed(3)),
+    logoLuma: Number(logoLuma.toFixed(3)),
+    contrast: Number(contrast.toFixed(3)),
+    sceneIsDark,
+    sceneIsLight,
+  });
+
   return { bytes, width, height };
 }
 
@@ -338,18 +496,39 @@ function imageCtaSubtitle(branding: BrandingOverlayRow | null) {
   return website || null;
 }
 
+/** Middle-of-video overlays only (follow CTA). Logos are reserved for intro/outro cards. */
 export function shouldApplyVideoOverlays(branding: BrandingOverlayRow | null) {
   if (!branding) return false;
-  const platformLogo = branding.watermark_enabled !== false && Boolean(branding.company_logo_url);
-  const vendorLogo = Boolean(branding.vendor_logo_url);
-  const followCta = branding.follow_cta_enabled === true;
-  return platformLogo || vendorLogo || followCta;
+  return branding.follow_cta_enabled === true;
 }
 
 export function hasLogoOverlays(branding: BrandingOverlayRow | null) {
   if (!branding) return false;
   return (branding.watermark_enabled !== false && Boolean(branding.company_logo_url))
     || Boolean(branding.vendor_logo_url);
+}
+
+async function sceneLumaForCorner(
+  scenePlate: Buffer | Buffer[] | null | undefined,
+  position: OverlayPosition,
+  canvasW: number,
+  canvasH: number,
+  estimateW: number,
+  estimateH: number,
+  margin: number,
+) {
+  if (!scenePlate) return 0.45;
+  const plates = Array.isArray(scenePlate) ? scenePlate : [scenePlate];
+  if (!plates.length) return 0.45;
+  const raw = coordsFor(position, canvasW, canvasH, estimateW, estimateH, margin);
+  const region = {
+    left: Math.max(0, raw.x - 4),
+    top: Math.max(0, raw.y - 4),
+    width: Math.min(canvasW, estimateW + 8),
+    height: Math.min(canvasH, estimateH + 8),
+  };
+  const samples = await Promise.all(plates.map((plate) => sampleLuminance(plate, region)));
+  return samples.reduce((sum, value) => sum + value, 0) / samples.length;
 }
 
 export async function compositeLogoOverlays(
@@ -363,6 +542,7 @@ export async function compositeLogoOverlays(
     width,
     height,
     duration: 10,
+    scenePlate: imageBytes,
   });
   if (!overlays.length) return imageBytes;
 
@@ -395,34 +575,103 @@ export async function prepareVideoOverlays(input: {
   width: number;
   height: number;
   duration: number;
+  /** One or more frames from the real video/image used to auto-grade logos to local color. */
+  scenePlate?: Buffer | Buffer[] | null;
+  /** When false, skip corner logos (used for mid-video; logos stay on intro/outro only). Default true. */
+  includeLogos?: boolean;
 }): Promise<PreparedOverlay[]> {
-  const { branding, width, height, duration } = input;
+  const { branding, width, height, duration, scenePlate, includeLogos = true } = input;
   if (!branding) return [];
 
   const margin = Math.max(16, Math.round(Math.min(width, height) * 0.035));
   const logoMaxW = even(width * 0.16);
   const logoMaxH = even(height * 0.14);
   const overlays: PreparedOverlay[] = [];
-  const platformPosition = asPosition(branding.watermark_position);
-  const vendorPosition = oppositePosition(platformPosition);
+  const platformPosition = asPosition(branding.watermark_position, 'bottom-right');
+  const vendorPosition = asPosition(branding.vendor_logo_position, 'bottom-left');
+  const gap = Math.max(10, Math.round(margin * 0.6));
+  let platformBox: { x: number; y: number; width: number; height: number } | null = null;
 
-  if (branding.watermark_enabled !== false && branding.company_logo_url) {
-    const logoBytes = await loadImageBuffer(branding.company_logo_url);
-    if (logoBytes) {
-      const badge = await renderLogoBadge(logoBytes, logoMaxW, logoMaxH);
-      const raw = coordsFor(platformPosition, width, height, badge.width, badge.height, margin);
-      const pos = clampPos(raw.x, raw.y, badge.width, badge.height, width, height);
-      overlays.push({ kind: 'platform', bytes: badge.bytes, width: badge.width, height: badge.height, ...pos });
+  if (includeLogos) {
+    logger.info('branded-overlay', 'Placing logos at selected corners', {
+      canvas: `${width}x${height}`,
+      platformPosition,
+      vendorPosition,
+      rawPlatform: branding.watermark_position,
+      rawVendor: branding.vendor_logo_position,
+      hasPlatformLogo: Boolean(branding.company_logo_url),
+      hasVendorLogo: Boolean(branding.vendor_logo_url),
+      adaptiveScene: Boolean(scenePlate),
+    });
+
+    if (branding.watermark_enabled !== false && branding.company_logo_url) {
+      const logoBytes = await loadImageBuffer(branding.company_logo_url);
+      if (logoBytes) {
+        const sceneLuma = await sceneLumaForCorner(
+          scenePlate,
+          platformPosition,
+          width,
+          height,
+          logoMaxW,
+          logoMaxH,
+          margin,
+        );
+        const badge = await renderLogoBadge(logoBytes, logoMaxW, logoMaxH, sceneLuma);
+        const raw = coordsFor(platformPosition, width, height, badge.width, badge.height, margin);
+        const pos = clampPos(raw.x, raw.y, badge.width, badge.height, width, height);
+        platformBox = { ...pos, width: badge.width, height: badge.height };
+        logger.info('branded-overlay', 'Platform logo coordinates', {
+          position: platformPosition,
+          x: pos.x,
+          y: pos.y,
+          width: badge.width,
+          height: badge.height,
+          sceneLuma: Number(sceneLuma.toFixed(3)),
+        });
+        overlays.push({ kind: 'platform', bytes: badge.bytes, width: badge.width, height: badge.height, ...pos });
+      }
     }
-  }
 
-  if (branding.vendor_logo_url) {
-    const logoBytes = await loadImageBuffer(branding.vendor_logo_url);
-    if (logoBytes) {
-      const badge = await renderLogoBadge(logoBytes, logoMaxW, logoMaxH);
-      const raw = coordsFor(vendorPosition, width, height, badge.width, badge.height, margin);
-      const pos = clampPos(raw.x, raw.y, badge.width, badge.height, width, height);
-      overlays.push({ kind: 'vendor', bytes: badge.bytes, width: badge.width, height: badge.height, ...pos });
+    if (branding.vendor_logo_url) {
+      const logoBytes = await loadImageBuffer(branding.vendor_logo_url);
+      if (logoBytes) {
+        let estimateY = 0;
+        if (platformBox && vendorPosition === platformPosition) {
+          const stackDown = vendorPosition.startsWith('top');
+          estimateY = stackDown ? platformBox.height + gap : -(logoMaxH + gap);
+        }
+        const sceneLuma = await sceneLumaForCorner(
+          scenePlate,
+          vendorPosition,
+          width,
+          height,
+          logoMaxW,
+          logoMaxH + Math.abs(estimateY),
+          margin,
+        );
+        const badge = await renderLogoBadge(logoBytes, logoMaxW, logoMaxH, sceneLuma);
+        let raw = coordsFor(vendorPosition, width, height, badge.width, badge.height, margin);
+        // If both logos share a corner, stack the vendor logo so they stay readable.
+        if (platformBox && vendorPosition === platformPosition) {
+          const stackDown = vendorPosition.startsWith('top');
+          raw = {
+            x: platformBox.x,
+            y: stackDown
+              ? platformBox.y + platformBox.height + gap
+              : platformBox.y - badge.height - gap,
+          };
+        }
+        const pos = clampPos(raw.x, raw.y, badge.width, badge.height, width, height);
+        logger.info('branded-overlay', 'Vendor logo coordinates', {
+          position: vendorPosition,
+          x: pos.x,
+          y: pos.y,
+          width: badge.width,
+          height: badge.height,
+          sceneLuma: Number(sceneLuma.toFixed(3)),
+        });
+        overlays.push({ kind: 'vendor', bytes: badge.bytes, width: badge.width, height: badge.height, ...pos });
+      }
     }
   }
 
@@ -464,6 +713,7 @@ export async function applyImageBranding(imageBytes: Buffer, branding: BrandingO
     width,
     height,
     duration: 10,
+    scenePlate: imageBytes,
   });
 
   if (overlays.length === 0) return { bytes: imageBytes, applied: false };

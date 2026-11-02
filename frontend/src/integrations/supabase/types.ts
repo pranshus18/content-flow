@@ -30,6 +30,7 @@ export type Database = {
           platform: string
           video_text_overlays: Json | null
           vendor_logo_url: string | null
+          vendor_logo_position: string | null
           watermark_logo_url: string | null
           watermark_position: string | null
           watermark_website_url: string | null
@@ -69,6 +70,7 @@ export type Database = {
           user_id: string
           video_text_overlays?: Json | null
           vendor_logo_url?: string | null
+          vendor_logo_position?: string | null
           watermark_logo_url?: string | null
           watermark_position?: string | null
           watermark_website_url?: string | null
@@ -96,6 +98,7 @@ export type Database = {
           title?: string
           video_text_overlays?: Json | null
           vendor_logo_url?: string | null
+          vendor_logo_position?: string | null
           watermark_logo_url?: string | null
           watermark_position?: string | null
           watermark_website_url?: string | null

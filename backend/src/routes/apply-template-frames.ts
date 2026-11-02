@@ -36,6 +36,7 @@ applyTemplateFramesRouter.post('/', asyncHandler(async (req: AuthedRequest, res)
     outroFrameUrl: typeof req.body?.outroFrameUrl === 'string' ? req.body.outroFrameUrl : undefined,
     introDuration: typeof req.body?.introDuration === 'number' ? req.body.introDuration : undefined,
     outroDuration: typeof req.body?.outroDuration === 'number' ? req.body.outroDuration : undefined,
+    stylePrompt: asOptionalString(req.body?.stylePrompt),
     introPrompt: asOptionalString(req.body?.introPrompt),
     outroPrompt: asOptionalString(req.body?.outroPrompt),
     branding: brandingBody
@@ -44,6 +45,7 @@ applyTemplateFramesRouter.post('/', asyncHandler(async (req: AuthedRequest, res)
           vendor_logo_url: asOptionalString(brandingBody.vendor_logo_url),
           company_website_url: asOptionalString(brandingBody.company_website_url),
           watermark_position: asOptionalString(brandingBody.watermark_position),
+          vendor_logo_position: asOptionalString(brandingBody.vendor_logo_position),
           follow_cta_enabled: asOptionalBoolean(brandingBody.follow_cta_enabled),
           follow_cta_text: asOptionalString(brandingBody.follow_cta_text),
           follow_cta_start_seconds: asOptionalNumber(brandingBody.follow_cta_start_seconds),

@@ -3,37 +3,52 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { TemplateFrameAiPrompt } from '@/components/TemplateFrameAiPrompt';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeBackend } from '@/lib/backend';
 import { errorMessage } from '@/lib/utils';
 import type { ContentItem } from '@/hooks/useContent';
-import { Clapperboard, Loader2, Sparkles, Trash2, Upload, Wand2 } from 'lucide-react';
+import { Clapperboard, Loader2, Sparkles, Trash2, Upload, Link as LinkIcon, Wand2 } from 'lucide-react';
 
-type Position = 'intro' | 'outro';
-
-type ApplyBranding = {
-  company_logo_url?: string | null;
-  vendor_logo_url?: string | null;
-  company_website_url?: string | null;
-  watermark_position?: string | null;
-  follow_cta_enabled?: boolean | null;
-  follow_cta_text?: string | null;
-  follow_cta_start_seconds?: number | null;
-  follow_cta_duration?: number | null;
-};
+type FramePosition = 'intro' | 'outro';
 
 interface TemplateFramesSectionProps {
   content: ContentItem;
   platform: string;
+  isVideo: boolean;
+  // Logos
+  watermarkLogoUrl: string;
+  vendorLogoUrl: string;
+  watermarkWebsiteUrl: string;
+  watermarkPosition: string;
+  vendorLogoPosition: string;
+  uploadingLogo: string | null;
+  onWatermarkLogoUrlChange: (value: string) => void;
+  onVendorLogoUrlChange: (value: string) => void;
+  onWatermarkWebsiteUrlChange: (value: string) => void;
+  onWatermarkPositionChange: (value: string) => void;
+  onVendorLogoPositionChange: (value: string) => void;
+  onPlatformLogoFile: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onVendorLogoFile: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  // Follow CTA
+  followCtaEnabled: boolean;
+  followCtaText: string;
+  followCtaStart: number | '';
+  followCtaDuration: number;
+  onFollowCtaEnabledChange: (value: boolean) => void;
+  onFollowCtaTextChange: (value: string) => void;
+  onFollowCtaStartChange: (value: number | '') => void;
+  onFollowCtaDurationChange: (value: number) => void;
+  // Intro / outro (video)
   introFrameUrl: string;
   outroFrameUrl: string;
   introDuration: number;
   outroDuration: number;
   introPrompt: string;
   outroPrompt: string;
-  branding?: ApplyBranding;
   onIntroFrameUrlChange: (url: string) => void;
   onOutroFrameUrlChange: (url: string) => void;
   onIntroDurationChange: (value: number) => void;
@@ -46,13 +61,34 @@ interface TemplateFramesSectionProps {
 export function TemplateFramesSection({
   content,
   platform,
+  isVideo,
+  watermarkLogoUrl,
+  vendorLogoUrl,
+  watermarkWebsiteUrl,
+  watermarkPosition,
+  vendorLogoPosition,
+  uploadingLogo,
+  onWatermarkLogoUrlChange,
+  onVendorLogoUrlChange,
+  onWatermarkWebsiteUrlChange,
+  onWatermarkPositionChange,
+  onVendorLogoPositionChange,
+  onPlatformLogoFile,
+  onVendorLogoFile,
+  followCtaEnabled,
+  followCtaText,
+  followCtaStart,
+  followCtaDuration,
+  onFollowCtaEnabledChange,
+  onFollowCtaTextChange,
+  onFollowCtaStartChange,
+  onFollowCtaDurationChange,
   introFrameUrl,
   outroFrameUrl,
   introDuration,
   outroDuration,
   introPrompt,
   outroPrompt,
-  branding,
   onIntroFrameUrlChange,
   onOutroFrameUrlChange,
   onIntroDurationChange,
@@ -64,47 +100,59 @@ export function TemplateFramesSection({
   const { toast } = useToast();
   const [busy, setBusy] = useState<string | null>(null);
 
-  const generate = async (position: Position, useAi: boolean) => {
+  const hasLogos = Boolean(watermarkLogoUrl || vendorLogoUrl);
+  const branding = {
+    company_logo_url: watermarkLogoUrl || null,
+    vendor_logo_url: vendorLogoUrl || null,
+    company_website_url: watermarkWebsiteUrl || null,
+    watermark_position: watermarkPosition,
+    vendor_logo_position: vendorLogoPosition,
+    follow_cta_enabled: followCtaEnabled,
+    follow_cta_text: followCtaText || 'Follow us',
+    follow_cta_start_seconds: followCtaStart === '' ? null : Number(followCtaStart),
+    follow_cta_duration: followCtaDuration,
+    watermark_enabled: true,
+  };
+
+  const generateOne = async (position: FramePosition) => {
     const prompt = (position === 'intro' ? introPrompt : outroPrompt).trim();
-    if (useAi && !prompt) {
+    if (!prompt) {
       toast({
-        title: 'Add an AI prompt',
-        description: `Describe the ${position} you want, then click Generate with AI.`,
+        title: `Add an ${position} prompt`,
+        description: `Describe the ${position} you want, then click Generate ${position}.`,
       });
       return;
     }
-    const key = `${position}-${useAi ? 'ai' : 'brand'}`;
-    setBusy(key);
+    setBusy(`${position}-ai`);
     try {
-      const data = await invokeBackend<{ success?: boolean; frameUrl?: string; error?: string; model?: string }>(
-        'generate-template-frame',
-        {
-          position,
-          contentId: content.id,
-          platform,
-          title: content.title,
-          prompt: prompt || undefined,
-          useAi,
-          saveTo: 'none',
-          branding: branding || undefined,
-        },
-      );
+      const data = await invokeBackend<{
+        success?: boolean;
+        frameUrl?: string;
+        error?: string;
+        model?: string;
+      }>('generate-template-frame', {
+        position,
+        contentId: content.id,
+        platform,
+        title: content.title,
+        prompt,
+        stylePrompt: prompt,
+        useAi: true,
+        saveTo: 'none',
+        branding,
+      });
       if (!data?.frameUrl) {
-        throw new Error(data?.error || 'No template frame was returned.');
+        throw new Error(data?.error || `No ${position} frame was returned.`);
       }
       if (position === 'intro') onIntroFrameUrlChange(data.frameUrl);
       else onOutroFrameUrlChange(data.frameUrl);
       toast({
-        title: useAi ? 'AI template generated' : 'Template frame generated',
-        description: useAi
-          ? prompt
-            ? `Created the ${position} from your prompt${data.model ? ` with ${data.model}` : ''}.`
-            : `Created a default ${position} from branding. Add a prompt for a custom look.`
-          : `A branded ${position} card was created from your logo and company details.`,
+        title: `${position === 'intro' ? 'Intro' : 'Outro'} generated`,
+        description: `Only the ${position} was updated. The other frame is unchanged${data.model ? ` (${data.model})` : ''}.`,
       });
     } catch (error: unknown) {
       toast({
-        title: 'Could not generate frame',
+        title: `Could not generate ${position}`,
         description: errorMessage(error, 'Template generation failed.'),
         variant: 'destructive',
       });
@@ -113,13 +161,12 @@ export function TemplateFramesSection({
     }
   };
 
-  const upload = async (position: Position, file: File) => {
+  const uploadFrame = async (position: FramePosition, file: File) => {
     setBusy(`${position}-upload`);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('You must be signed in to upload a template frame.');
       const ext = file.name.split('.').pop() || 'png';
-      // First folder must be the user id — storage RLS only allows that prefix.
       const filePath = `${user.id}/templates/${content.id}/${position}-${Date.now()}.${ext}`;
       const { error } = await supabase.storage.from('content-media').upload(filePath, file, {
         cacheControl: '3600',
@@ -131,7 +178,7 @@ export function TemplateFramesSection({
       else onOutroFrameUrlChange(data.publicUrl);
       toast({
         title: 'Frame uploaded',
-        description: `Custom ${position} image is ready to preview.`,
+        description: `Custom ${position} is ready. Click Apply once to save it into the video.`,
       });
     } catch (error: unknown) {
       toast({
@@ -145,36 +192,54 @@ export function TemplateFramesSection({
   };
 
   const apply = async () => {
+    const introP = introPrompt.trim() || null;
+    const outroP = outroPrompt.trim() || null;
+    if (!hasLogos && !introP && !outroP && !introFrameUrl && !outroFrameUrl && !followCtaEnabled) {
+      toast({
+        title: 'Add branding first',
+        description: 'Upload logos and/or generate intro/outro frames, then Apply.',
+      });
+      return;
+    }
+
     setBusy('apply');
     try {
+      toast({
+        title: 'Applying branding…',
+        description: isVideo
+          ? 'Baking logos, intro, and outro into the video in one pass.'
+          : 'Baking logos into the image.',
+      });
       const data = await invokeBackend<{
         success?: boolean;
         error?: string;
         content?: ContentItem;
       }>('apply-template-frames', {
         contentId: content.id,
-        introFrameUrl: introFrameUrl || null,
-        outroFrameUrl: outroFrameUrl || null,
+        introFrameUrl: isVideo ? (introFrameUrl || null) : null,
+        outroFrameUrl: isVideo ? (outroFrameUrl || null) : null,
         introDuration,
         outroDuration,
-        introPrompt: introPrompt || null,
-        outroPrompt: outroPrompt || null,
-        branding: branding || undefined,
+        introPrompt: introP,
+        outroPrompt: outroP,
+        branding,
+        platform,
       });
       if (!data?.success || !data.content) {
-        throw new Error(data?.error || 'Could not apply template frames to the video.');
+        throw new Error(data?.error || 'Could not apply branding.');
       }
+      // Parent syncs frame URLs + clears dirty — do not call frame setters here (would re-mark dirty).
       onApplied?.(data.content);
-      const introSecs = introFrameUrl ? introDuration : 0;
-      const outroSecs = outroFrameUrl ? outroDuration : 0;
       toast({
-        title: 'Intro and outro added',
-        description: `Added ${introSecs}s intro and ${outroSecs}s outro to the video.`,
+        title: isVideo ? 'Video saved' : 'Image saved',
+        description: isVideo
+          ? `Branded clip saved with logos, ${introDuration}s intro, and ${outroDuration}s outro. No need to save again.`
+          : 'Branded image saved. No need to save again.',
       });
     } catch (error: unknown) {
       toast({
-        title: 'Could not apply frames',
-        description: errorMessage(error, 'Video wrapping failed.'),
+        title: 'Could not apply branding',
+        description: errorMessage(error, 'Branding failed.'),
         variant: 'destructive',
       });
     } finally {
@@ -182,66 +247,227 @@ export function TemplateFramesSection({
     }
   };
 
+  const locked = busy !== null || uploadingLogo !== null;
+
   return (
-    <div className="space-y-4 p-4 bg-secondary/40 rounded-lg border border-border">
+    <div className="space-y-5 p-4 bg-primary/5 rounded-lg border border-primary/20">
       <div className="flex items-start justify-between gap-3">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <Clapperboard className="w-4 h-4 text-primary" />
-            <Label className="text-base font-semibold">Video Template Frames</Label>
+            <Label className="text-base font-semibold">Ready-to-post branding</Label>
             {content.template_frames_applied && (
-              <Badge variant="outline" className="text-xs">Applied to video</Badge>
+              <Badge variant="outline" className="text-xs">Applied</Badge>
             )}
           </div>
           <p className="text-xs text-muted-foreground">
-            Set how many seconds the intro and outro should last, then Apply to video. They are mixed into the same opening and closing shots so they look like they were already in the clip.
+            {isVideo
+              ? 'Generate intro and outro if you want them, then click Apply to video once — that saves the branded clip.'
+              : 'Set logos here — then Apply once to save the branded image.'}
           </p>
-          <p className="text-xs text-foreground">
-            Added time: {introFrameUrl ? `${introDuration}s intro` : 'no intro'}
-            {' + '}
-            {outroFrameUrl ? `${outroDuration}s outro` : 'no outro'}
-          </p>
+          {isVideo && (
+            <p className="text-xs text-foreground">
+              Package: {hasLogos ? 'logos' : 'no logos'} · {introDuration}s intro + {outroDuration}s outro
+            </p>
+          )}
         </div>
         <Button
           type="button"
           size="sm"
           onClick={apply}
-          disabled={busy !== null}
-          className="flex items-center gap-2"
+          disabled={locked}
+          className="flex items-center gap-2 shrink-0"
         >
           {busy === 'apply' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-          Apply to video
+          {isVideo ? 'Apply to video' : 'Apply to image'}
         </Button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <FrameCard
-          position="intro"
-          heading="Intro (before video)"
-          imageUrl={introFrameUrl}
-          duration={introDuration}
-          prompt={introPrompt}
-          busy={busy}
-          onPromptChange={onIntroPromptChange}
-          onDurationChange={onIntroDurationChange}
-          onGenerate={generate}
-          onUpload={upload}
-          onClear={() => onIntroFrameUrlChange('')}
+        <EditLogoField
+          id="platform-logo"
+          label="Platform / company logo"
+          value={watermarkLogoUrl}
+          uploading={uploadingLogo === 'platform'}
+          disabled={locked}
+          onUrlChange={onWatermarkLogoUrlChange}
+          onFileChange={onPlatformLogoFile}
         />
-        <FrameCard
-          position="outro"
-          heading="Outro (after video)"
-          imageUrl={outroFrameUrl}
-          duration={outroDuration}
-          prompt={outroPrompt}
-          busy={busy}
-          onPromptChange={onOutroPromptChange}
-          onDurationChange={onOutroDurationChange}
-          onGenerate={generate}
-          onUpload={upload}
-          onClear={() => onOutroFrameUrlChange('')}
+        <EditLogoField
+          id="vendor-logo"
+          label="Vendor logo"
+          value={vendorLogoUrl}
+          uploading={uploadingLogo === 'vendor'}
+          disabled={locked}
+          onUrlChange={onVendorLogoUrlChange}
+          onFileChange={onVendorLogoFile}
         />
       </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="watermark-website">
+          <div className="flex items-center gap-2">
+            <LinkIcon className="w-4 h-4" />
+            Company Website URL
+          </div>
+        </Label>
+        <Input
+          id="watermark-website"
+          type="url"
+          placeholder="https://yourcompany.com"
+          value={watermarkWebsiteUrl}
+          onChange={(e) => onWatermarkWebsiteUrlChange(e.target.value)}
+          disabled={locked}
+          className="bg-secondary border-border"
+        />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div className="space-y-2">
+          <Label htmlFor="watermark-position">Platform logo position</Label>
+          <Select value={watermarkPosition} onValueChange={onWatermarkPositionChange} disabled={locked}>
+            <SelectTrigger id="watermark-position" className="bg-secondary border-border">
+              <SelectValue placeholder="Select position" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="top-left">Top Left</SelectItem>
+              <SelectItem value="top-right">Top Right</SelectItem>
+              <SelectItem value="bottom-left">Bottom Left</SelectItem>
+              <SelectItem value="bottom-right">Bottom Right</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="vendor-logo-position">Vendor logo position</Label>
+          <Select value={vendorLogoPosition} onValueChange={onVendorLogoPositionChange} disabled={locked}>
+            <SelectTrigger id="vendor-logo-position" className="bg-secondary border-border">
+              <SelectValue placeholder="Select position" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="top-left">Top Left</SelectItem>
+              <SelectItem value="top-right">Top Right</SelectItem>
+              <SelectItem value="bottom-left">Bottom Left</SelectItem>
+              <SelectItem value="bottom-right">Bottom Right</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Each logo can sit in any corner. If both use the same corner, they stack so both stay visible.
+      </p>
+
+      <div className="space-y-3 pt-2 border-t border-primary/20">
+        <div className="flex items-center justify-between">
+          <div>
+            <Label>Follow CTA at a specific time</Label>
+            <p className="text-xs text-muted-foreground">
+              {isVideo ? 'Baked into the video at this timestamp.' : 'Baked onto the image.'}
+            </p>
+          </div>
+          <Switch checked={followCtaEnabled} onCheckedChange={onFollowCtaEnabledChange} disabled={locked} />
+        </div>
+        {followCtaEnabled && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="space-y-2">
+              <Label htmlFor="follow-cta-text">CTA text</Label>
+              <Input
+                id="follow-cta-text"
+                placeholder="Follow us"
+                value={followCtaText}
+                onChange={(e) => onFollowCtaTextChange(e.target.value)}
+                disabled={locked}
+                className="bg-secondary border-border"
+              />
+            </div>
+            {isVideo && (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="follow-cta-start">Show at (seconds)</Label>
+                  <Input
+                    id="follow-cta-start"
+                    type="number"
+                    min={0}
+                    step={0.5}
+                    placeholder="Auto (mid-video)"
+                    value={followCtaStart}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      onFollowCtaStartChange(raw === '' ? '' : Number(raw));
+                    }}
+                    disabled={locked}
+                    className="bg-secondary border-border"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="follow-cta-duration">Stay on screen</Label>
+                  <Input
+                    id="follow-cta-duration"
+                    type="number"
+                    min={1}
+                    max={12}
+                    value={followCtaDuration}
+                    onChange={(e) => onFollowCtaDurationChange(Number(e.target.value) || 4)}
+                    disabled={locked}
+                    className="bg-secondary border-border"
+                  />
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
+      {isVideo && (
+        <div className="pt-2 border-t border-primary/20 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-muted-foreground">
+              Each side has its own prompt. Regenerate one without changing the other, then Apply once to save.
+            </p>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={apply}
+              disabled={locked}
+              className="flex items-center gap-2"
+            >
+              {busy === 'apply' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+              Apply to video
+            </Button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <FrameCard
+              position="intro"
+              heading="Intro"
+              imageUrl={introFrameUrl}
+              duration={introDuration}
+              prompt={introPrompt}
+              busy={busy}
+              locked={locked}
+              onPromptChange={onIntroPromptChange}
+              onDurationChange={onIntroDurationChange}
+              onGenerate={() => generateOne('intro')}
+              onUpload={uploadFrame}
+              onClear={() => onIntroFrameUrlChange('')}
+            />
+            <FrameCard
+              position="outro"
+              heading="Outro"
+              imageUrl={outroFrameUrl}
+              duration={outroDuration}
+              prompt={outroPrompt}
+              busy={busy}
+              locked={locked}
+              onPromptChange={onOutroPromptChange}
+              onDurationChange={onOutroDurationChange}
+              onGenerate={() => generateOne('outro')}
+              onUpload={uploadFrame}
+              onClear={() => onOutroFrameUrlChange('')}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -253,29 +479,29 @@ function FrameCard({
   duration,
   prompt,
   busy,
+  locked,
   onPromptChange,
   onDurationChange,
   onGenerate,
   onUpload,
   onClear,
 }: {
-  position: Position;
+  position: FramePosition;
   heading: string;
   imageUrl: string;
   duration: number;
   prompt: string;
   busy: string | null;
+  locked: boolean;
   onPromptChange: (value: string) => void;
   onDurationChange: (value: number) => void;
-  onGenerate: (position: Position, useAi: boolean) => void;
-  onUpload: (position: Position, file: File) => void;
+  onGenerate: () => void;
+  onUpload: (position: FramePosition, file: File) => void;
   onClear: () => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
-  const generating = busy === `${position}-brand`;
-  const generatingAi = busy === `${position}-ai`;
   const uploading = busy === `${position}-upload`;
-  const locked = busy !== null;
+  const generating = busy === `${position}-ai`;
 
   return (
     <div className="space-y-3 p-3 rounded-lg border border-border bg-background">
@@ -289,6 +515,7 @@ function FrameCard({
             step={0.5}
             value={duration}
             onChange={(e) => onDurationChange(Math.min(30, Math.max(0.5, Number(e.target.value) || 0.5)))}
+            disabled={locked}
             className="w-16 h-8 bg-secondary border-border text-xs"
           />
           <span className="text-xs text-muted-foreground">sec</span>
@@ -300,7 +527,7 @@ function FrameCard({
           <img src={imageUrl} alt={`${position} template`} className="w-full h-auto max-h-80 object-contain" />
         ) : (
           <p className="text-xs text-muted-foreground px-4 text-center">
-            No {position} frame yet. Generate from branding or AI.
+            No {position} yet. Add a prompt and Generate, or upload.
           </p>
         )}
       </div>
@@ -313,13 +540,9 @@ function FrameCard({
       />
 
       <div className="flex flex-wrap gap-2">
-        <Button type="button" variant="outline" size="sm" disabled={locked} onClick={() => onGenerate(position, false)}>
-          {generating ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <Sparkles className="w-3.5 h-3.5 mr-1" />}
-          From branding
-        </Button>
-        <Button type="button" variant="outline" size="sm" disabled={locked} onClick={() => onGenerate(position, true)}>
-          {generatingAi ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <Wand2 className="w-3.5 h-3.5 mr-1" />}
-          Generate with AI
+        <Button type="button" size="sm" disabled={locked} onClick={onGenerate}>
+          {generating ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <Wand2 className="w-3.5 h-3.5 mr-1" />}
+          Generate {position}
         </Button>
         <input
           ref={fileRef}
@@ -342,6 +565,87 @@ function FrameCard({
           </Button>
         )}
       </div>
+    </div>
+  );
+}
+
+function EditLogoField({
+  id,
+  label,
+  value,
+  uploading,
+  disabled,
+  onUrlChange,
+  onFileChange,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  uploading: boolean;
+  disabled: boolean;
+  onUrlChange: (value: string) => void;
+  onFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+}) {
+  const inputId = `${id}-upload`;
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={id}>{label}</Label>
+      <div className="flex items-center gap-3">
+        <Input
+          id={id}
+          type="text"
+          placeholder="Logo URL or upload image"
+          value={value}
+          onChange={(e) => onUrlChange(e.target.value)}
+          disabled={disabled}
+          className="bg-secondary border-border"
+        />
+        <input
+          id={inputId}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          disabled={disabled}
+          onChange={onFileChange}
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={disabled}
+          onClick={() => document.getElementById(inputId)?.click()}
+          className="flex items-center gap-2 shrink-0"
+        >
+          {uploading ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Uploading...
+            </>
+          ) : (
+            <>
+              <Upload className="w-4 h-4" />
+              Upload
+            </>
+          )}
+        </Button>
+        {value ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={disabled}
+            onClick={() => onUrlChange('')}
+            className="shrink-0"
+          >
+            Remove
+          </Button>
+        ) : null}
+      </div>
+      {value ? (
+        <img src={value} alt={`${label} preview`} className="h-12 w-auto object-contain bg-secondary rounded p-1" />
+      ) : (
+        <p className="text-xs text-muted-foreground">No logo yet. Upload a transparent PNG.</p>
+      )}
     </div>
   );
 }

@@ -138,6 +138,7 @@ export default function AdminDashboard() {
     vendorLogoUrl?: string,
     watermarkWebsiteUrl?: string,
     watermarkPosition?: string,
+    vendorLogoPosition?: string,
     templateFrames?: {
       intro_frame_url?: string | null;
       outro_frame_url?: string | null;
@@ -145,30 +146,35 @@ export default function AdminDashboard() {
       outro_frame_duration?: number;
     }
   ) => {
-    if (editingContent) {
-      const platformChanged = editingContent.platform !== platform;
-      
-      await updateAdminFields(
-        editingContent.id, 
-        adminDescription, 
-        adminNotes,
-        watermarkLogoUrl,
-        vendorLogoUrl,
-        watermarkWebsiteUrl,
-        watermarkPosition,
-        templateFrames
-      );
-      // Update platform separately
-      await updateContent(editingContent.id, { platform });
-      
-      // If platform changed and there's media, re-process for new platform
-      if (platformChanged && editingContent.media_url && editingContent.media_type === 'image') {
-        // Re-process image for new platform with platform-specific dimensions
-        await preprocessMedia(editingContent.id, editingContent.media_url, 'image', platform);
-      }
-      
-      setEditingContent(null);
+    if (!editingContent) return;
+
+    const platformChanged = editingContent.platform !== platform;
+
+    await updateAdminFields(
+      editingContent.id,
+      adminDescription,
+      adminNotes,
+      watermarkLogoUrl,
+      vendorLogoUrl,
+      watermarkWebsiteUrl,
+      watermarkPosition,
+      vendorLogoPosition,
+      templateFrames,
+    );
+    await updateContent(editingContent.id, {
+      platform,
+      watermark_position: watermarkPosition || null,
+      vendor_logo_position: vendorLogoPosition || null,
+      watermark_logo_url: watermarkLogoUrl || null,
+      vendor_logo_url: vendorLogoUrl || null,
+      watermark_website_url: watermarkWebsiteUrl || null,
+    });
+
+    if (platformChanged && editingContent.media_url && editingContent.media_type === 'image') {
+      await preprocessMedia(editingContent.id, editingContent.media_url, 'image', platform);
     }
+
+    await refetch();
   };
 
   // Show loading state - AdminRoute already handles all redirects and role checks
