@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 
-const platformIcons: Record<string, any> = {
+const platformIcons: Record<string, typeof Instagram> = {
   instagram: Instagram,
   facebook: Facebook,
   youtube: Youtube,

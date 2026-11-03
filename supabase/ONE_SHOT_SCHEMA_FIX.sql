@@ -10,7 +10,11 @@ ALTER TABLE public.content
   ADD COLUMN IF NOT EXISTS template_source_url TEXT,
   ADD COLUMN IF NOT EXISTS template_frames_applied BOOLEAN NOT NULL DEFAULT false,
   ADD COLUMN IF NOT EXISTS vendor_logo_url TEXT,
-  ADD COLUMN IF NOT EXISTS vendor_logo_position TEXT DEFAULT 'bottom-left';
+  ADD COLUMN IF NOT EXISTS vendor_logo_position TEXT DEFAULT 'bottom-left',
+  ADD COLUMN IF NOT EXISTS platform_logo_throughout BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS vendor_logo_throughout BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS background_music_track_id TEXT,
+  ADD COLUMN IF NOT EXISTS background_music_volume NUMERIC NOT NULL DEFAULT 1.0;
 
 -- Branding settings for templates, vendor logo, follow CTA, positions
 ALTER TABLE public.branding_settings
@@ -28,7 +32,8 @@ ALTER TABLE public.branding_settings
   ADD COLUMN IF NOT EXISTS follow_cta_enabled BOOLEAN NOT NULL DEFAULT true,
   ADD COLUMN IF NOT EXISTS follow_cta_text TEXT DEFAULT 'Follow us',
   ADD COLUMN IF NOT EXISTS follow_cta_start_seconds NUMERIC,
-  ADD COLUMN IF NOT EXISTS follow_cta_duration INTEGER NOT NULL DEFAULT 4;
+  ADD COLUMN IF NOT EXISTS follow_cta_duration INTEGER NOT NULL DEFAULT 4,
+  ADD COLUMN IF NOT EXISTS follow_cta_repeat_seconds NUMERIC;
 
 -- Helpful comments (ignore errors if comment already exists conceptually; these are fine to re-run)
 COMMENT ON COLUMN public.content.intro_frame_url IS 'Still image shown as a title card before the raw video';
@@ -36,6 +41,10 @@ COMMENT ON COLUMN public.content.outro_frame_url IS 'Still image shown as an end
 COMMENT ON COLUMN public.content.template_source_url IS 'Video used as the middle clip when wrapping intro/outro frames';
 COMMENT ON COLUMN public.content.vendor_logo_url IS 'Vendor logo for this content only. Not inherited from other videos.';
 COMMENT ON COLUMN public.content.vendor_logo_position IS 'Per-content vendor logo corner; independent of watermark_position';
+COMMENT ON COLUMN public.content.platform_logo_throughout IS 'Platform logo on main video clip when true; intro/outro only when false';
+COMMENT ON COLUMN public.content.vendor_logo_throughout IS 'Vendor logo on main video clip when true; intro/outro only when false';
+COMMENT ON COLUMN public.content.background_music_track_id IS 'Catalog id for baked-in background music; NULL = no music';
+COMMENT ON COLUMN public.content.background_music_volume IS 'Gain 0–1 applied to background music when baking';
 COMMENT ON COLUMN public.branding_settings.intro_frame_url IS 'Default intro template frame for videos';
 COMMENT ON COLUMN public.branding_settings.outro_frame_url IS 'Default outro template frame for videos';
 COMMENT ON COLUMN public.branding_settings.company_tagline IS 'Small line under the logo on the intro template';
@@ -49,3 +58,4 @@ COMMENT ON COLUMN public.branding_settings.follow_cta_enabled IS 'Whether to bak
 COMMENT ON COLUMN public.branding_settings.follow_cta_text IS 'Follow CTA copy, e.g. Follow us';
 COMMENT ON COLUMN public.branding_settings.follow_cta_start_seconds IS 'Seconds into the main clip when the follow CTA appears. NULL = mid-video';
 COMMENT ON COLUMN public.branding_settings.follow_cta_duration IS 'How long the follow CTA stays on screen, in seconds';
+COMMENT ON COLUMN public.branding_settings.follow_cta_repeat_seconds IS 'When set, the follow CTA reappears every N seconds. NULL/0 = show once';

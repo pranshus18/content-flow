@@ -28,12 +28,16 @@ const contentFields = [
   'watermark_website_url',
   'watermark_position',
   'vendor_logo_position',
+  'platform_logo_throughout',
+  'vendor_logo_throughout',
   'intro_frame_url',
   'outro_frame_url',
   'intro_frame_duration',
   'outro_frame_duration',
   'template_source_url',
   'template_frames_applied',
+  'background_music_track_id',
+  'background_music_volume',
 ] as const;
 
 const brandingFields = [
@@ -62,6 +66,7 @@ const brandingFields = [
   'follow_cta_text',
   'follow_cta_start_seconds',
   'follow_cta_duration',
+  'follow_cta_repeat_seconds',
 ] as const;
 
 const allowedPlatforms = new Set(['instagram', 'facebook', 'youtube']);

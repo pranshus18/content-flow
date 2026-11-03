@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input';
 import { VideoPlayer } from '@/components/VideoPlayer';
 import { ImageViewer } from '@/components/ImageViewer';
 import { TemplateFramesSection } from '@/components/TemplateFramesSection';
+import { BackgroundMusicSection } from '@/components/BackgroundMusicSection';
 import { ContentItem } from '@/hooks/useContent';
 
 interface AdminEditDialogProps {
@@ -35,7 +36,15 @@ interface AdminEditDialogProps {
       outro_frame_url?: string | null;
       intro_frame_duration?: number;
       outro_frame_duration?: number;
-    }
+    },
+    logoVideoScope?: {
+      platform_logo_throughout?: boolean;
+      vendor_logo_throughout?: boolean;
+    },
+    backgroundMusic?: {
+      background_music_track_id?: string | null;
+      background_music_volume?: number;
+    },
   ) => void | Promise<void>;
   onContentUpdated?: (content: ContentItem) => void;
 }
@@ -50,11 +59,14 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
   const [watermarkWebsiteUrl, setWatermarkWebsiteUrl] = useState('');
   const [watermarkPosition, setWatermarkPosition] = useState('bottom-right');
   const [vendorLogoPosition, setVendorLogoPosition] = useState('bottom-left');
+  const [platformLogoThroughout, setPlatformLogoThroughout] = useState(false);
+  const [vendorLogoThroughout, setVendorLogoThroughout] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState<string | null>(null);
   const [followCtaEnabled, setFollowCtaEnabled] = useState(true);
   const [followCtaText, setFollowCtaText] = useState('Follow us');
   const [followCtaStart, setFollowCtaStart] = useState<number | ''>('');
   const [followCtaDuration, setFollowCtaDuration] = useState(4);
+  const [followCtaRepeat, setFollowCtaRepeat] = useState<number | ''>('');
   const [introFrameUrl, setIntroFrameUrl] = useState('');
   const [outroFrameUrl, setOutroFrameUrl] = useState('');
   const [introDuration, setIntroDuration] = useState(3);
@@ -64,6 +76,7 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
   const [exportOpen, setExportOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [previewMediaUrl, setPreviewMediaUrl] = useState('');
+  const [backgroundMusicTrackId, setBackgroundMusicTrackId] = useState<string | null>(null);
   // True when logos/CTA/frames changed since last successful bake — Apply or Save bakes once.
   const [brandingDirty, setBrandingDirty] = useState(false);
   const { toast } = useToast();
@@ -94,6 +107,14 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
     setVendorLogoPosition(value);
     markBrandingDirty();
   };
+  const setPlatformLogoThroughoutTracked = (value: boolean) => {
+    setPlatformLogoThroughout(value);
+    markBrandingDirty();
+  };
+  const setVendorLogoThroughoutTracked = (value: boolean) => {
+    setVendorLogoThroughout(value);
+    markBrandingDirty();
+  };
   const setFollowCtaEnabledTracked = (value: boolean) => {
     setFollowCtaEnabled(value);
     markBrandingDirty();
@@ -108,6 +129,10 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
   };
   const setFollowCtaDurationTracked = (value: number) => {
     setFollowCtaDuration(value);
+    markBrandingDirty();
+  };
+  const setFollowCtaRepeatTracked = (value: number | '') => {
+    setFollowCtaRepeat(value);
     markBrandingDirty();
   };
   const setIntroFrameUrlTracked = (url: string) => {
@@ -134,6 +159,10 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
     setOutroPrompt(value);
     markBrandingDirty();
   };
+  const setBackgroundMusicTrackIdTracked = (trackId: string | null) => {
+    setBackgroundMusicTrackId(trackId);
+    markBrandingDirty();
+  };
 
   useEffect(() => {
     if (!open || !content) {
@@ -157,10 +186,13 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
     setWatermarkWebsiteUrl(content.watermark_website_url || '');
     setWatermarkPosition(content.watermark_position || 'bottom-right');
     setVendorLogoPosition(content.vendor_logo_position || 'bottom-left');
+    setPlatformLogoThroughout(content.platform_logo_throughout === true);
+    setVendorLogoThroughout(content.vendor_logo_throughout === true);
     setFollowCtaEnabled(false);
     setFollowCtaText('Follow us');
     setFollowCtaStart('');
     setFollowCtaDuration(4);
+    setFollowCtaRepeat('');
     setIntroFrameUrl(content.intro_frame_url || '');
     setOutroFrameUrl(content.outro_frame_url || '');
     setIntroDuration(content.intro_frame_duration || 3);
@@ -169,6 +201,7 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
     setOutroPrompt('');
     setBrandingDirty(false);
     setPreviewMediaUrl(content.enhanced_media_url || content.media_url || '');
+    setBackgroundMusicTrackId(content.background_music_track_id ?? null);
     suppressDirtyRef.current = false;
   }, [open, content]);
 
@@ -187,6 +220,15 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
     if (updated.watermark_website_url != null) setWatermarkWebsiteUrl(updated.watermark_website_url || '');
     if (updated.watermark_position) setWatermarkPosition(updated.watermark_position);
     if (updated.vendor_logo_position) setVendorLogoPosition(updated.vendor_logo_position);
+    if (updated.platform_logo_throughout != null) {
+      setPlatformLogoThroughout(updated.platform_logo_throughout === true);
+    }
+    if (updated.vendor_logo_throughout != null) {
+      setVendorLogoThroughout(updated.vendor_logo_throughout === true);
+    }
+    if (updated.background_music_track_id !== undefined) {
+      setBackgroundMusicTrackId(updated.background_music_track_id ?? null);
+    }
     suppressDirtyRef.current = false;
     setBrandingDirty(false);
     onContentUpdated?.(updated);
@@ -379,8 +421,17 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
           intro_frame_duration: introDuration,
           outro_frame_duration: outroDuration,
         },
+        {
+          platform_logo_throughout: platformLogoThroughout,
+          vendor_logo_throughout: vendorLogoThroughout,
+        },
+        {
+          background_music_track_id: backgroundMusicTrackId,
+          background_music_volume: 1,
+        },
       );
 
+      const hasMusicWork = (backgroundMusicTrackId ?? null) !== (content.background_music_track_id ?? null);
       // Only bake when branding changed since last Apply/Save — never re-encode an already-saved video.
       const hasBrandingWork = Boolean(
         watermarkLogoUrl
@@ -389,7 +440,10 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
         || outroFrameUrl
         || introPrompt.trim()
         || outroPrompt.trim()
-        || followCtaEnabled,
+        || followCtaEnabled
+        || platformLogoThroughout !== (content.platform_logo_throughout === true)
+        || vendorLogoThroughout !== (content.vendor_logo_throughout === true)
+        || hasMusicWork,
       );
       if (brandingDirty && hasBrandingWork) {
         toast({
@@ -419,8 +473,13 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
             follow_cta_text: followCtaText || 'Follow us',
             follow_cta_start_seconds: followCtaStart === '' ? null : Number(followCtaStart),
             follow_cta_duration: followCtaDuration,
+            follow_cta_repeat_seconds: followCtaRepeat === '' ? null : Number(followCtaRepeat),
+            platform_logo_throughout: platformLogoThroughout,
+            vendor_logo_throughout: vendorLogoThroughout,
             watermark_enabled: true,
           },
+          backgroundMusicTrackId: backgroundMusicTrackId || null,
+          backgroundMusicVolume: 1,
         });
 
         if (!data?.success) {
@@ -532,6 +591,8 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
                         watermarkWebsiteUrl={watermarkWebsiteUrl || undefined}
                         watermarkPosition={watermarkPosition}
                         vendorLogoPosition={vendorLogoPosition}
+                        platformLogoThroughout={platformLogoThroughout}
+                        vendorLogoThroughout={vendorLogoThroughout}
                         introFrameUrl={introFrameUrl || undefined}
                         outroFrameUrl={outroFrameUrl || undefined}
                         introDuration={introDuration}
@@ -660,10 +721,19 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
             />
           </div>
 
+          {isVideo && (
+            <BackgroundMusicSection
+              selectedTrackId={backgroundMusicTrackId}
+              onSelectedTrackIdChange={setBackgroundMusicTrackIdTracked}
+              disabled={saving}
+            />
+          )}
+
           <TemplateFramesSection
             content={content}
             platform={platform}
             isVideo={isVideo}
+            backgroundMusicTrackId={backgroundMusicTrackId}
             watermarkLogoUrl={watermarkLogoUrl}
             vendorLogoUrl={vendorLogoUrl}
             watermarkWebsiteUrl={watermarkWebsiteUrl}
@@ -675,16 +745,22 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
             onWatermarkWebsiteUrlChange={setWatermarkWebsiteUrlTracked}
             onWatermarkPositionChange={setWatermarkPositionTracked}
             onVendorLogoPositionChange={setVendorLogoPositionTracked}
+            platformLogoThroughout={platformLogoThroughout}
+            vendorLogoThroughout={vendorLogoThroughout}
+            onPlatformLogoThroughoutChange={setPlatformLogoThroughoutTracked}
+            onVendorLogoThroughoutChange={setVendorLogoThroughoutTracked}
             onPlatformLogoFile={(e) => handleLogoUpload(e, 'platform')}
             onVendorLogoFile={(e) => handleLogoUpload(e, 'vendor')}
             followCtaEnabled={followCtaEnabled}
             followCtaText={followCtaText}
             followCtaStart={followCtaStart}
             followCtaDuration={followCtaDuration}
+            followCtaRepeat={followCtaRepeat}
             onFollowCtaEnabledChange={setFollowCtaEnabledTracked}
             onFollowCtaTextChange={setFollowCtaTextTracked}
             onFollowCtaStartChange={setFollowCtaStartTracked}
             onFollowCtaDurationChange={setFollowCtaDurationTracked}
+            onFollowCtaRepeatChange={setFollowCtaRepeatTracked}
             introFrameUrl={introFrameUrl}
             outroFrameUrl={outroFrameUrl}
             introDuration={introDuration}

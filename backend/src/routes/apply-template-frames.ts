@@ -50,9 +50,14 @@ applyTemplateFramesRouter.post('/', asyncHandler(async (req: AuthedRequest, res)
           follow_cta_text: asOptionalString(brandingBody.follow_cta_text),
           follow_cta_start_seconds: asOptionalNumber(brandingBody.follow_cta_start_seconds),
           follow_cta_duration: asOptionalNumber(brandingBody.follow_cta_duration),
+          follow_cta_repeat_seconds: asOptionalNumber(brandingBody.follow_cta_repeat_seconds),
+          platform_logo_throughout: asOptionalBoolean(brandingBody.platform_logo_throughout),
+          vendor_logo_throughout: asOptionalBoolean(brandingBody.vendor_logo_throughout),
           watermark_enabled: true,
         }
       : undefined,
+    backgroundMusicTrackId: asOptionalString(req.body?.backgroundMusicTrackId),
+    backgroundMusicVolume: asOptionalNumber(req.body?.backgroundMusicVolume),
   });
   res.json(result);
 }));

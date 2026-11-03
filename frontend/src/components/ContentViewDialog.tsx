@@ -33,7 +33,7 @@ interface ContentViewDialogProps {
   userLastName?: string | null;
 }
 
-const platformIcons: Record<string, any> = {
+const platformIcons: Record<string, typeof Instagram> = {
   instagram: Instagram,
   facebook: Facebook,
 };

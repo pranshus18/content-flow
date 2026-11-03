@@ -34,12 +34,16 @@ export interface ContentItem {
   watermark_website_url: string | null;
   watermark_position: string | null;
   vendor_logo_position?: string | null;
+  platform_logo_throughout?: boolean | null;
+  vendor_logo_throughout?: boolean | null;
   intro_frame_url?: string | null;
   outro_frame_url?: string | null;
   intro_frame_duration?: number | null;
   outro_frame_duration?: number | null;
   template_source_url?: string | null;
   template_frames_applied?: boolean | null;
+  background_music_track_id?: string | null;
+  background_music_volume?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -264,7 +268,15 @@ function useContentController() {
       outro_frame_url?: string | null;
       intro_frame_duration?: number;
       outro_frame_duration?: number;
-    }
+    },
+    logoVideoScope?: {
+      platform_logo_throughout?: boolean;
+      vendor_logo_throughout?: boolean;
+    },
+    backgroundMusic?: {
+      background_music_track_id?: string | null;
+      background_music_volume?: number;
+    },
   ) => {
     const result = await updateContent(id, {
       admin_description: adminDescription,
@@ -274,12 +286,24 @@ function useContentController() {
       watermark_website_url: watermarkWebsiteUrl || null,
       watermark_position: watermarkPosition || null,
       vendor_logo_position: vendorLogoPosition || null,
+      ...(logoVideoScope
+        ? {
+            platform_logo_throughout: logoVideoScope.platform_logo_throughout === true,
+            vendor_logo_throughout: logoVideoScope.vendor_logo_throughout === true,
+          }
+        : {}),
       ...(templateFrames
         ? {
             intro_frame_url: templateFrames.intro_frame_url || null,
             outro_frame_url: templateFrames.outro_frame_url || null,
             intro_frame_duration: templateFrames.intro_frame_duration,
             outro_frame_duration: templateFrames.outro_frame_duration,
+          }
+        : {}),
+      ...(backgroundMusic
+        ? {
+            background_music_track_id: backgroundMusic.background_music_track_id ?? null,
+            background_music_volume: backgroundMusic.background_music_volume ?? 1,
           }
         : {}),
     });

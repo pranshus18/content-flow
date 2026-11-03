@@ -144,7 +144,15 @@ export default function AdminDashboard() {
       outro_frame_url?: string | null;
       intro_frame_duration?: number;
       outro_frame_duration?: number;
-    }
+    },
+    logoVideoScope?: {
+      platform_logo_throughout?: boolean;
+      vendor_logo_throughout?: boolean;
+    },
+    backgroundMusic?: {
+      background_music_track_id?: string | null;
+      background_music_volume?: number;
+    },
   ) => {
     if (!editingContent) return;
 
@@ -160,6 +168,8 @@ export default function AdminDashboard() {
       watermarkPosition,
       vendorLogoPosition,
       templateFrames,
+      logoVideoScope,
+      backgroundMusic,
     );
     await updateContent(editingContent.id, {
       platform,
@@ -291,6 +301,14 @@ export default function AdminDashboard() {
                 )}
               </TabsTrigger>
               <TabsTrigger value="approved">Approved</TabsTrigger>
+              <TabsTrigger value="published" className="flex gap-2">
+                Published
+                {publishedContent.length > 0 && (
+                  <Badge variant="secondary" className="h-5 px-1.5 text-xs">
+                    {publishedContent.length}
+                  </Badge>
+                )}
+              </TabsTrigger>
               <TabsTrigger value="drafts">Drafts</TabsTrigger>
             </TabsList>
 

@@ -1,0 +1,32 @@
+{
+  "tracks": [
+    { "id": "upbeat-sunrise-01", "title": "Sunrise Drive", "category": "Upbeat", "tags": ["energetic", "social", "morning"], "durationSeconds": 142, "storagePath": "music-library/upbeat-sunrise-01.mp3" },
+    { "id": "upbeat-pop-lift-02", "title": "Pop Lift", "category": "Upbeat", "tags": ["catchy", "instagram"], "durationSeconds": 118, "storagePath": "music-library/upbeat-pop-lift-02.mp3" },
+    { "id": "upbeat-festival-03", "title": "Festival Lights", "category": "Upbeat", "tags": ["party", "dance"], "durationSeconds": 156, "storagePath": "music-library/upbeat-festival-03.mp3" },
+    { "id": "upbeat-runway-04", "title": "Runway Pulse", "category": "Upbeat", "tags": ["fashion", "bold"], "durationSeconds": 132, "storagePath": "music-library/upbeat-runway-04.mp3" },
+    { "id": "corporate-clarity-01", "title": "Clarity Forward", "category": "Corporate", "tags": ["professional", "linkedin"], "durationSeconds": 165, "storagePath": "music-library/corporate-clarity-01.mp3" },
+    { "id": "corporate-trust-02", "title": "Built on Trust", "category": "Corporate", "tags": ["business", "clean"], "durationSeconds": 148, "storagePath": "music-library/corporate-trust-02.mp3" },
+    { "id": "corporate-innovate-03", "title": "Innovate Today", "category": "Corporate", "tags": ["tech", "startup"], "durationSeconds": 172, "storagePath": "music-library/corporate-innovate-03.mp3" },
+    { "id": "corporate-summit-04", "title": "Summit Room", "category": "Corporate", "tags": ["presentation", "calm"], "durationSeconds": 190, "storagePath": "music-library/corporate-summit-04.mp3" },
+    { "id": "chill-soft-waves-01", "title": "Soft Waves", "category": "Chill", "tags": ["relax", "lifestyle"], "durationSeconds": 210, "storagePath": "music-library/chill-soft-waves-01.mp3" },
+    { "id": "chill-late-night-02", "title": "Late Night Ease", "category": "Chill", "tags": ["lofi", "cozy"], "durationSeconds": 198, "storagePath": "music-library/chill-late-night-02.mp3" },
+    { "id": "chill-sunday-03", "title": "Sunday Slow", "category": "Chill", "tags": ["ambient", "soft"], "durationSeconds": 225, "storagePath": "music-library/chill-sunday-03.mp3" },
+    { "id": "chill-breeze-04", "title": "Coastal Breeze", "category": "Chill", "tags": ["travel", "calm"], "durationSeconds": 184, "storagePath": "music-library/chill-breeze-04.mp3" },
+    { "id": "cinematic-rise-01", "title": "Rise Sequence", "category": "Cinematic", "tags": ["epic", "trailer"], "durationSeconds": 145, "storagePath": "music-library/cinematic-rise-01.mp3" },
+    { "id": "cinematic-horizon-02", "title": "Wide Horizon", "category": "Cinematic", "tags": ["dramatic", "story"], "durationSeconds": 168, "storagePath": "music-library/cinematic-horizon-02.mp3" },
+    { "id": "cinematic-echo-03", "title": "Echo Chamber", "category": "Cinematic", "tags": ["mystery", "depth"], "durationSeconds": 152, "storagePath": "music-library/cinematic-echo-03.mp3" },
+    { "id": "cinematic-dawn-04", "title": "Dawn Over City", "category": "Cinematic", "tags": ["inspiring", "film"], "durationSeconds": 176, "storagePath": "music-library/cinematic-dawn-04.mp3" },
+    { "id": "acoustic-warm-01", "title": "Warm Strings", "category": "Acoustic", "tags": ["organic", "friendly"], "durationSeconds": 134, "storagePath": "music-library/acoustic-warm-01.mp3" },
+    { "id": "acoustic-porch-02", "title": "Front Porch", "category": "Acoustic", "tags": ["folk", "natural"], "durationSeconds": 158, "storagePath": "music-library/acoustic-porch-02.mp3" },
+    { "id": "acoustic-golden-03", "title": "Golden Hour Pick", "category": "Acoustic", "tags": ["guitar", "warm"], "durationSeconds": 141, "storagePath": "music-library/acoustic-golden-03.mp3" },
+    { "id": "acoustic-story-04", "title": "Storyteller", "category": "Acoustic", "tags": ["intimate", "voiceover"], "durationSeconds": 162, "storagePath": "music-library/acoustic-story-04.mp3" },
+    { "id": "electronic-neon-01", "title": "Neon Grid", "category": "Electronic", "tags": ["synth", "modern"], "durationSeconds": 128, "storagePath": "music-library/electronic-neon-01.mp3" },
+    { "id": "electronic-pulse-02", "title": "Digital Pulse", "category": "Electronic", "tags": ["tech", "edm"], "durationSeconds": 136, "storagePath": "music-library/electronic-pulse-02.mp3" },
+    { "id": "electronic-glow-03", "title": "Midnight Glow", "category": "Electronic", "tags": ["club", "energy"], "durationSeconds": 149, "storagePath": "music-library/electronic-glow-03.mp3" },
+    { "id": "electronic-orbit-04", "title": "Low Orbit", "category": "Electronic", "tags": ["futuristic", "minimal"], "durationSeconds": 155, "storagePath": "music-library/electronic-orbit-04.mp3" },
+    { "id": "upbeat-victory-05", "title": "Victory Lap", "category": "Upbeat", "tags": ["sports", "win"], "durationSeconds": 124, "storagePath": "music-library/upbeat-victory-05.mp3" },
+    { "id": "corporate-growth-05", "title": "Steady Growth", "category": "Corporate", "tags": ["finance", "stable"], "durationSeconds": 180, "storagePath": "music-library/corporate-growth-05.mp3" },
+    { "id": "chill-meditation-05", "title": "Quiet Mind", "category": "Chill", "tags": ["wellness", "spa"], "durationSeconds": 240, "storagePath": "music-library/chill-meditation-05.mp3" },
+    { "id": "cinematic-legacy-05", "title": "Legacy Frame", "category": "Cinematic", "tags": ["emotional", "brand"], "durationSeconds": 188, "storagePath": "music-library/cinematic-legacy-05.mp3" }
+  ]
+}

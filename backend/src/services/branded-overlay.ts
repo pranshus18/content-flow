@@ -15,9 +15,21 @@ export type BrandingOverlayRow = {
   follow_cta_text?: string | null;
   follow_cta_start_seconds?: number | string | null;
   follow_cta_duration?: number | string | null;
+  follow_cta_repeat_seconds?: number | string | null;
+  /** When true, platform logo is burned on the main video clip (not only intro/outro). */
+  platform_logo_throughout?: boolean | null;
+  /** When true, vendor logo is burned on the main video clip (not only intro/outro). */
+  vendor_logo_throughout?: boolean | null;
   watermark_enabled?: boolean | null;
   watermark_position?: string | null;
   vendor_logo_position?: string | null;
+};
+
+export type OverlayEnableWindow = {
+  start: number;
+  end: number;
+  /** When set (> hold), CTA reappears every N seconds from `start`. */
+  repeatEvery?: number | null;
 };
 
 export type PreparedOverlay = {
@@ -27,7 +39,7 @@ export type PreparedOverlay = {
   height: number;
   x: number;
   y: number;
-  enable?: { start: number; end: number };
+  enable?: OverlayEnableWindow;
 };
 
 function even(value: number) {
@@ -465,7 +477,10 @@ async function renderCtaBanner(text: string, subtitle: string | null, canvasWidt
   return { bytes, width, height };
 }
 
-export function followCtaWindow(duration: number, branding: BrandingOverlayRow | null) {
+export function followCtaWindow(
+  duration: number,
+  branding: BrandingOverlayRow | null,
+): OverlayEnableWindow | null {
   if (!branding || branding.follow_cta_enabled === false) return null;
   if (!Number.isFinite(duration) || duration < 1.6) return null;
 
@@ -478,7 +493,31 @@ export function followCtaWindow(duration: number, branding: BrandingOverlayRow |
   start = Math.max(0, Math.min(start, Math.max(0, duration - 1.2)));
   const end = Math.min(duration - 0.05, start + Math.min(hold, Math.max(1.2, duration - start)));
   if (end - start < 0.8) return null;
-  return { start, end };
+
+  const rawRepeat = branding.follow_cta_repeat_seconds;
+  const repeatRequested = rawRepeat === null || rawRepeat === undefined || String(rawRepeat).trim() === ''
+    ? Number.NaN
+    : Number(rawRepeat);
+  const holdLen = end - start;
+  // Interval must leave a gap after each appearance; otherwise treat as one-shot.
+  const repeatEvery = Number.isFinite(repeatRequested) && repeatRequested > holdLen + 0.25
+    ? repeatRequested
+    : null;
+
+  return { start, end, repeatEvery };
+}
+
+/** Build an ffmpeg overlay `enable` expression for a CTA window (one-shot or repeating). */
+export function overlayEnableExpression(window: OverlayEnableWindow): string {
+  const start = window.start.toFixed(3);
+  const end = window.end.toFixed(3);
+  const hold = Math.max(0.8, window.end - window.start);
+  if (window.repeatEvery && window.repeatEvery > hold + 0.25) {
+    const interval = window.repeatEvery.toFixed(3);
+    const holdFixed = hold.toFixed(3);
+    return `gte(t,${start})*lt(mod(t-${start},${interval}),${holdFixed})`;
+  }
+  return `between(t,${start},${end})`;
 }
 
 export function followCtaCopy(branding: BrandingOverlayRow | null) {
@@ -496,10 +535,38 @@ function imageCtaSubtitle(branding: BrandingOverlayRow | null) {
   return website || null;
 }
 
-/** Middle-of-video overlays only (follow CTA). Logos are reserved for intro/outro cards. */
+export function platformLogoOnMainVideo(branding: BrandingOverlayRow | null) {
+  if (!branding || branding.watermark_enabled === false || !branding.company_logo_url) return false;
+  return branding.platform_logo_throughout === true;
+}
+
+export function vendorLogoOnMainVideo(branding: BrandingOverlayRow | null) {
+  if (!branding || !branding.vendor_logo_url) return false;
+  return branding.vendor_logo_throughout === true;
+}
+
+export function platformLogoOnIntroOutro(branding: BrandingOverlayRow | null) {
+  if (!branding || branding.watermark_enabled === false || !branding.company_logo_url) return false;
+  return branding.platform_logo_throughout !== true;
+}
+
+export function vendorLogoOnIntroOutro(branding: BrandingOverlayRow | null) {
+  if (!branding || !branding.vendor_logo_url) return false;
+  return branding.vendor_logo_throughout !== true;
+}
+
+export function hasThroughoutVideoLogos(branding: BrandingOverlayRow | null) {
+  return platformLogoOnMainVideo(branding) || vendorLogoOnMainVideo(branding);
+}
+
+export function hasIntroOutroCardLogos(branding: BrandingOverlayRow | null) {
+  return platformLogoOnIntroOutro(branding) || vendorLogoOnIntroOutro(branding);
+}
+
+/** Mid-video ffmpeg overlays: follow CTA and/or logos marked "throughout video". */
 export function shouldApplyVideoOverlays(branding: BrandingOverlayRow | null) {
   if (!branding) return false;
-  return branding.follow_cta_enabled === true;
+  return branding.follow_cta_enabled === true || hasThroughoutVideoLogos(branding);
 }
 
 export function hasLogoOverlays(branding: BrandingOverlayRow | null) {
@@ -536,13 +603,23 @@ export async function compositeLogoOverlays(
   branding: BrandingOverlayRow | null,
   width: number,
   height: number,
+  /** intro_outro = respect per-logo video scope; image = always composite both logos when set. */
+  mode: 'intro_outro' | 'image' = 'intro_outro',
 ) {
+  const includePlatformLogo = mode === 'image'
+    ? Boolean(branding && branding.watermark_enabled !== false && branding.company_logo_url)
+    : platformLogoOnIntroOutro(branding);
+  const includeVendorLogo = mode === 'image'
+    ? Boolean(branding?.vendor_logo_url)
+    : vendorLogoOnIntroOutro(branding);
   const overlays = await prepareVideoOverlays({
     branding: branding ? { ...branding, follow_cta_enabled: false } : null,
     width,
     height,
     duration: 10,
     scenePlate: imageBytes,
+    includePlatformLogo,
+    includeVendorLogo,
   });
   if (!overlays.length) return imageBytes;
 
@@ -567,7 +644,7 @@ export async function applyLogoOverlaysToImage(
   const canvasW = even(width || meta.width || 1080);
   const canvasH = even(height || meta.height || 1080);
   const fitted = await normalizeFrameToSize(imageBytes, canvasW, canvasH, plate);
-  return compositeLogoOverlays(fitted, branding, canvasW, canvasH);
+  return compositeLogoOverlays(fitted, branding, canvasW, canvasH, 'image');
 }
 
 export async function prepareVideoOverlays(input: {
@@ -577,10 +654,23 @@ export async function prepareVideoOverlays(input: {
   duration: number;
   /** One or more frames from the real video/image used to auto-grade logos to local color. */
   scenePlate?: Buffer | Buffer[] | null;
-  /** When false, skip corner logos (used for mid-video; logos stay on intro/outro only). Default true. */
+  /** When false, skip all corner logos. Default true. */
   includeLogos?: boolean;
+  /** Override platform logo on this pass (defaults to includeLogos). */
+  includePlatformLogo?: boolean;
+  /** Override vendor logo on this pass (defaults to includeLogos). */
+  includeVendorLogo?: boolean;
 }): Promise<PreparedOverlay[]> {
-  const { branding, width, height, duration, scenePlate, includeLogos = true } = input;
+  const {
+    branding,
+    width,
+    height,
+    duration,
+    scenePlate,
+    includeLogos = true,
+    includePlatformLogo = includeLogos,
+    includeVendorLogo = includeLogos,
+  } = input;
   if (!branding) return [];
 
   const margin = Math.max(16, Math.round(Math.min(width, height) * 0.035));
@@ -592,7 +682,8 @@ export async function prepareVideoOverlays(input: {
   const gap = Math.max(10, Math.round(margin * 0.6));
   let platformBox: { x: number; y: number; width: number; height: number } | null = null;
 
-  if (includeLogos) {
+  const placeLogos = includePlatformLogo || includeVendorLogo;
+  if (placeLogos) {
     logger.info('branded-overlay', 'Placing logos at selected corners', {
       canvas: `${width}x${height}`,
       platformPosition,
@@ -604,7 +695,7 @@ export async function prepareVideoOverlays(input: {
       adaptiveScene: Boolean(scenePlate),
     });
 
-    if (branding.watermark_enabled !== false && branding.company_logo_url) {
+    if (includePlatformLogo && branding.watermark_enabled !== false && branding.company_logo_url) {
       const logoBytes = await loadImageBuffer(branding.company_logo_url);
       if (logoBytes) {
         const sceneLuma = await sceneLumaForCorner(
@@ -632,7 +723,7 @@ export async function prepareVideoOverlays(input: {
       }
     }
 
-    if (branding.vendor_logo_url) {
+    if (includeVendorLogo && branding.vendor_logo_url) {
       const logoBytes = await loadImageBuffer(branding.vendor_logo_url);
       if (logoBytes) {
         let estimateY = 0;

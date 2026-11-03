@@ -609,9 +609,10 @@ export async function processVideoForPlatform(
           resolve(processedFile);
         };
         
-        mediaRecorder.onerror = (event: any) => {
+        mediaRecorder.onerror = (event: Event) => {
           URL.revokeObjectURL(url);
-          reject(new Error(`MediaRecorder error: ${event.error?.message || 'Unknown error'}`));
+          const recorderError = (event.target as MediaRecorder | null)?.error;
+          reject(new Error(`MediaRecorder error: ${recorderError?.message || 'Unknown error'}`));
         };
         
         // Process video frame by frame with proper timing
@@ -829,7 +830,7 @@ export async function processVideoForPlatform(
             const fontSizeSmall = Math.max(22, targetWidth / 50); // Larger small font
             
             let hasAnyText = false;
-            let textItems: string[] = []; // Track what we're drawing
+            const textItems: string[] = []; // Track what we're drawing
             
             // Company Name (largest, bold)
             const companyNameValue = brandingSettings?.company_name;

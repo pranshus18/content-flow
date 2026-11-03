@@ -25,6 +25,8 @@ interface VideoPlayerProps {
   watermarkWebsiteUrl?: string | null;
   watermarkPosition?: string | null;
   vendorLogoPosition?: string | null;
+  platformLogoThroughout?: boolean;
+  vendorLogoThroughout?: boolean;
   introFrameUrl?: string | null;
   outroFrameUrl?: string | null;
   introDuration?: number;
@@ -43,6 +45,8 @@ export function VideoPlayer({
   watermarkWebsiteUrl,
   watermarkPosition = 'bottom-right',
   vendorLogoPosition = 'bottom-left',
+  platformLogoThroughout = false,
+  vendorLogoThroughout = false,
   introFrameUrl,
   outroFrameUrl,
   introDuration = 3,
@@ -132,12 +136,15 @@ export function VideoPlayer({
     }
   };
 
-  // Preview logos only on intro/outro — not during the main clip.
-  const showLogosOnTemplate =
-    templatePhase === 'intro' || templatePhase === 'outro';
-  const showPlatform = !brandingBaked && effectiveLogoUrl && showLogosOnTemplate;
-  const showVendor = !brandingBaked && effectiveVendorUrl && showLogosOnTemplate;
-  const showClickable = !brandingBaked && effectiveWebsiteUrl && showLogosOnTemplate;
+  const onIntroOutroCards = templatePhase === 'intro' || templatePhase === 'outro';
+  const onMainClip = templatePhase === 'video' || (templatePhase === 'idle' && !showIntroPreview);
+  const showPlatform = !brandingBaked && effectiveLogoUrl && (
+    (platformLogoThroughout && onMainClip) || (!platformLogoThroughout && onIntroOutroCards)
+  );
+  const showVendor = !brandingBaked && effectiveVendorUrl && (
+    (vendorLogoThroughout && onMainClip) || (!vendorLogoThroughout && onIntroOutroCards)
+  );
+  const showClickable = !brandingBaked && effectiveWebsiteUrl && showPlatform;
   const posMode = isFullscreen ? 'fixed' : 'absolute';
 
   return (

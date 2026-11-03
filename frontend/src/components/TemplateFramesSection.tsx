@@ -25,6 +25,10 @@ interface TemplateFramesSectionProps {
   watermarkWebsiteUrl: string;
   watermarkPosition: string;
   vendorLogoPosition: string;
+  platformLogoThroughout: boolean;
+  vendorLogoThroughout: boolean;
+  onPlatformLogoThroughoutChange: (value: boolean) => void;
+  onVendorLogoThroughoutChange: (value: boolean) => void;
   uploadingLogo: string | null;
   onWatermarkLogoUrlChange: (value: string) => void;
   onVendorLogoUrlChange: (value: string) => void;
@@ -38,10 +42,12 @@ interface TemplateFramesSectionProps {
   followCtaText: string;
   followCtaStart: number | '';
   followCtaDuration: number;
+  followCtaRepeat: number | '';
   onFollowCtaEnabledChange: (value: boolean) => void;
   onFollowCtaTextChange: (value: string) => void;
   onFollowCtaStartChange: (value: number | '') => void;
   onFollowCtaDurationChange: (value: number) => void;
+  onFollowCtaRepeatChange: (value: number | '') => void;
   // Intro / outro (video)
   introFrameUrl: string;
   outroFrameUrl: string;
@@ -55,6 +61,7 @@ interface TemplateFramesSectionProps {
   onOutroDurationChange: (value: number) => void;
   onIntroPromptChange: (value: string) => void;
   onOutroPromptChange: (value: string) => void;
+  backgroundMusicTrackId?: string | null;
   onApplied?: (updated: ContentItem) => void;
 }
 
@@ -67,6 +74,10 @@ export function TemplateFramesSection({
   watermarkWebsiteUrl,
   watermarkPosition,
   vendorLogoPosition,
+  platformLogoThroughout,
+  vendorLogoThroughout,
+  onPlatformLogoThroughoutChange,
+  onVendorLogoThroughoutChange,
   uploadingLogo,
   onWatermarkLogoUrlChange,
   onVendorLogoUrlChange,
@@ -79,10 +90,12 @@ export function TemplateFramesSection({
   followCtaText,
   followCtaStart,
   followCtaDuration,
+  followCtaRepeat,
   onFollowCtaEnabledChange,
   onFollowCtaTextChange,
   onFollowCtaStartChange,
   onFollowCtaDurationChange,
+  onFollowCtaRepeatChange,
   introFrameUrl,
   outroFrameUrl,
   introDuration,
@@ -95,6 +108,7 @@ export function TemplateFramesSection({
   onOutroDurationChange,
   onIntroPromptChange,
   onOutroPromptChange,
+  backgroundMusicTrackId = null,
   onApplied,
 }: TemplateFramesSectionProps) {
   const { toast } = useToast();
@@ -111,6 +125,9 @@ export function TemplateFramesSection({
     follow_cta_text: followCtaText || 'Follow us',
     follow_cta_start_seconds: followCtaStart === '' ? null : Number(followCtaStart),
     follow_cta_duration: followCtaDuration,
+    follow_cta_repeat_seconds: followCtaRepeat === '' ? null : Number(followCtaRepeat),
+    platform_logo_throughout: platformLogoThroughout,
+    vendor_logo_throughout: vendorLogoThroughout,
     watermark_enabled: true,
   };
 
@@ -194,10 +211,14 @@ export function TemplateFramesSection({
   const apply = async () => {
     const introP = introPrompt.trim() || null;
     const outroP = outroPrompt.trim() || null;
-    if (!hasLogos && !introP && !outroP && !introFrameUrl && !outroFrameUrl && !followCtaEnabled) {
+    const hasMusicWork = isVideo && (
+      Boolean(backgroundMusicTrackId)
+      || (backgroundMusicTrackId ?? null) !== (content.background_music_track_id ?? null)
+    );
+    if (!hasLogos && !introP && !outroP && !introFrameUrl && !outroFrameUrl && !followCtaEnabled && !hasMusicWork) {
       toast({
-        title: 'Add branding first',
-        description: 'Upload logos and/or generate intro/outro frames, then Apply.',
+        title: 'Add branding or music first',
+        description: 'Upload logos, generate intro/outro frames, or pick background music, then Apply.',
       });
       return;
     }
@@ -224,6 +245,8 @@ export function TemplateFramesSection({
         outroPrompt: outroP,
         branding,
         platform,
+        backgroundMusicTrackId: isVideo ? (backgroundMusicTrackId || null) : undefined,
+        backgroundMusicVolume: isVideo ? 1 : undefined,
       });
       if (!data?.success || !data.content) {
         throw new Error(data?.error || 'Could not apply branding.');
@@ -292,6 +315,10 @@ export function TemplateFramesSection({
           disabled={locked}
           onUrlChange={onWatermarkLogoUrlChange}
           onFileChange={onPlatformLogoFile}
+          videoPlacement={isVideo && watermarkLogoUrl ? {
+            throughout: platformLogoThroughout,
+            onThroughoutChange: onPlatformLogoThroughoutChange,
+          } : undefined}
         />
         <EditLogoField
           id="vendor-logo"
@@ -301,6 +328,10 @@ export function TemplateFramesSection({
           disabled={locked}
           onUrlChange={onVendorLogoUrlChange}
           onFileChange={onVendorLogoFile}
+          videoPlacement={isVideo && vendorLogoUrl ? {
+            throughout: vendorLogoThroughout,
+            onThroughoutChange: onVendorLogoThroughoutChange,
+          } : undefined}
         />
       </div>
 
@@ -354,20 +385,25 @@ export function TemplateFramesSection({
       </div>
       <p className="text-xs text-muted-foreground">
         Each logo can sit in any corner. If both use the same corner, they stack so both stay visible.
+        {isVideo && (
+          <> For videos, choose intro &amp; outro only or throughout the main clip per logo.</>
+        )}
       </p>
 
       <div className="space-y-3 pt-2 border-t border-primary/20">
         <div className="flex items-center justify-between">
           <div>
-            <Label>Follow CTA at a specific time</Label>
+            <Label>Repeatable CTA at a particular second</Label>
             <p className="text-xs text-muted-foreground">
-              {isVideo ? 'Baked into the video at this timestamp.' : 'Baked onto the image.'}
+              {isVideo
+                ? 'Show a CTA at a timestamp, optionally repeating every N seconds.'
+                : 'Baked onto the image.'}
             </p>
           </div>
           <Switch checked={followCtaEnabled} onCheckedChange={onFollowCtaEnabledChange} disabled={locked} />
         </div>
         {followCtaEnabled && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label htmlFor="follow-cta-text">CTA text</Label>
               <Input
@@ -410,6 +446,26 @@ export function TemplateFramesSection({
                     disabled={locked}
                     className="bg-secondary border-border"
                   />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="follow-cta-repeat">Repeat every (seconds)</Label>
+                  <Input
+                    id="follow-cta-repeat"
+                    type="number"
+                    min={0}
+                    step={0.5}
+                    placeholder="Once only"
+                    value={followCtaRepeat}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      onFollowCtaRepeatChange(raw === '' ? '' : Number(raw));
+                    }}
+                    disabled={locked}
+                    className="bg-secondary border-border"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Leave empty to show once. Must be longer than “Stay on screen”.
+                  </p>
                 </div>
               </>
             )}
@@ -577,6 +633,7 @@ function EditLogoField({
   disabled,
   onUrlChange,
   onFileChange,
+  videoPlacement,
 }: {
   id: string;
   label: string;
@@ -585,6 +642,10 @@ function EditLogoField({
   disabled: boolean;
   onUrlChange: (value: string) => void;
   onFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  videoPlacement?: {
+    throughout: boolean;
+    onThroughoutChange: (throughout: boolean) => void;
+  };
 }) {
   const inputId = `${id}-upload`;
   return (
@@ -645,6 +706,24 @@ function EditLogoField({
         <img src={value} alt={`${label} preview`} className="h-12 w-auto object-contain bg-secondary rounded p-1" />
       ) : (
         <p className="text-xs text-muted-foreground">No logo yet. Upload a transparent PNG.</p>
+      )}
+      {videoPlacement && (
+        <div className="space-y-2 pt-1">
+          <Label className="text-xs">Show on video</Label>
+          <Select
+            value={videoPlacement.throughout ? 'throughout' : 'intro_outro'}
+            onValueChange={(v) => videoPlacement.onThroughoutChange(v === 'throughout')}
+            disabled={disabled}
+          >
+            <SelectTrigger className="h-9 bg-secondary border-border text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="intro_outro">Intro &amp; outro only</SelectItem>
+              <SelectItem value="throughout">Throughout main video</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       )}
     </div>
   );

@@ -11,7 +11,6 @@ import {
   X, 
   Edit, 
   Trash2, 
-  Send, 
   RefreshCw,
   Heart,
   MessageCircle,
@@ -46,7 +45,7 @@ interface AdminContentCardProps {
   showScheduleButton?: boolean;
 }
 
-const platformIcons: Record<string, any> = {
+const platformIcons: Record<string, typeof Instagram> = {
   instagram: Instagram,
   facebook: Facebook,
   youtube: Youtube,
@@ -71,13 +70,11 @@ export function AdminContentCard({
   onReject,
   onEdit,
   onDelete,
-  onPublish,
   onSchedule,
   onRefreshAnalytics,
   onEnhanceQuality,
   isRefreshing,
   isEnhancing,
-  showPublishButton,
   showAnalytics,
   showScheduleButton,
 }: AdminContentCardProps) {
@@ -247,12 +244,6 @@ export function AdminContentCard({
           <Button size="sm" onClick={onSchedule} variant="outline" className="flex-1">
             <CalendarIcon className="w-4 h-4 mr-1" />
             Schedule
-          </Button>
-        )}
-        {false && showPublishButton && onPublish && (
-          <Button size="sm" onClick={onPublish} className="flex-1 glow">
-            <Send className="w-4 h-4 mr-1" />
-            Publish Now
           </Button>
         )}
         {onEnhanceQuality && content.media_url && (

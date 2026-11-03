@@ -15,6 +15,9 @@ import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 
+/** Re-enable when scheduled publishing is wired up in the UI. */
+const SCHEDULING_UI_ENABLED = false;
+
 interface CreateContentDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -433,8 +436,7 @@ export function CreateContentDialog({ open, onOpenChange, onSubmit, editContent,
             </p>
           </div>
 
-          {/* Scheduling is hidden for now */}
-          {false && (enableScheduling || editContent) && (
+          {SCHEDULING_UI_ENABLED && (enableScheduling || editContent) && (
             <div className="space-y-2">
               <Label>Schedule Post (Optional)</Label>
               <div className="grid grid-cols-2 gap-3">

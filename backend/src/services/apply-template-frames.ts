@@ -11,16 +11,26 @@ import {
   transcodeWithOverlays,
   withTempDir,
   wrapNativeIntroOutro,
+  replaceVideoAudioWithMusic,
   type FfmpegOverlay,
 } from '../lib/video-tools.js';
+import {
+  clampMusicVolume,
+  getBackgroundMusicTrack,
+  resolveBackgroundMusicPublicUrl,
+} from '../lib/music-catalog.js';
 import {
   applyLogoOverlaysToImage,
   asPosition,
   compositeLogoOverlays,
+  hasIntroOutroCardLogos,
   hasLogoOverlays,
   normalizeFrameToSize,
+  overlayEnableExpression,
+  platformLogoOnMainVideo,
   prepareVideoOverlays,
   shouldApplyVideoOverlays,
+  vendorLogoOnMainVideo,
   type BrandingOverlayRow,
 } from './branded-overlay.js';
 import {
@@ -65,6 +75,8 @@ export interface ApplyTemplateFramesInput {
   outroPrompt?: string | null;
   branding?: BrandingOverlayRow | null;
   sourceUrl?: string | null;
+  backgroundMusicTrackId?: string | null;
+  backgroundMusicVolume?: number | null;
 }
 
 /** System-generated frames live under templates/intro|outro; user uploads use {userId}/templates/... */
@@ -305,6 +317,12 @@ export async function applyTemplateFrames(input: ApplyTemplateFramesInput) {
     watermark_position: platformPosition,
     vendor_logo_position: vendorPosition,
     watermark_enabled: true,
+    platform_logo_throughout: input.branding?.platform_logo_throughout
+      ?? (content.platform_logo_throughout as boolean | null | undefined)
+      ?? false,
+    vendor_logo_throughout: input.branding?.vendor_logo_throughout
+      ?? (content.vendor_logo_throughout as boolean | null | undefined)
+      ?? false,
   } as BrandingOverlayRow;
 
   logger.info('apply-template-frames', 'Resolved logo corners for this content', {
@@ -321,6 +339,29 @@ export async function applyTemplateFrames(input: ApplyTemplateFramesInput) {
     },
   });
 
+  const resolvedMusicTrackId = input.backgroundMusicTrackId !== undefined
+    ? (typeof input.backgroundMusicTrackId === 'string' && input.backgroundMusicTrackId.trim()
+      ? input.backgroundMusicTrackId.trim()
+      : null)
+    : ((content.background_music_track_id as string | null | undefined) ?? null);
+  const musicVolume = clampMusicVolume(
+    input.backgroundMusicVolume ?? content.background_music_volume ?? 1,
+  );
+  if (resolvedMusicTrackId && !getBackgroundMusicTrack(resolvedMusicTrackId)) {
+    throw httpError(400, `Unknown background music track: ${resolvedMusicTrackId}`);
+  }
+  const hasBackgroundMusic = Boolean(resolvedMusicTrackId);
+  const musicTouched = input.backgroundMusicTrackId !== undefined
+    || input.backgroundMusicVolume !== undefined;
+  const hadMusic = Boolean(content.background_music_track_id);
+  const clearingMusic = musicTouched && !resolvedMusicTrackId && hadMusic;
+  const musicPatch = musicTouched
+    ? {
+        background_music_track_id: resolvedMusicTrackId,
+        background_music_volume: musicVolume,
+      }
+    : {};
+
   const overlayEnabled = shouldApplyVideoOverlays(brandingRow);
   // One Apply click: logos + intro + outro together whenever branding is present.
   const wantsBrandPackage = Boolean(
@@ -332,27 +373,17 @@ export async function applyTemplateFrames(input: ApplyTemplateFramesInput) {
   );
   const introEnabled = wantsBrandPackage;
   const outroEnabled = wantsBrandPackage;
+  const needsBrandingBake = introEnabled || outroEnabled || overlayEnabled;
+  const shouldProcessVideo = needsBrandingBake || hasBackgroundMusic || clearingMusic;
   const brandingPatch = {
     watermark_logo_url: brandingRow.company_logo_url || null,
     vendor_logo_url: brandingRow.vendor_logo_url || null,
     watermark_website_url: brandingRow.company_website_url || content.watermark_website_url || null,
     watermark_position: platformPosition,
     vendor_logo_position: vendorPosition,
+    platform_logo_throughout: brandingRow.platform_logo_throughout === true,
+    vendor_logo_throughout: brandingRow.vendor_logo_throughout === true,
   };
-
-  if (!introEnabled && !outroEnabled && !overlayEnabled) {
-    logger.info('apply-template-frames', 'Intro, outro, logos, and follow CTA disabled; leaving media unchanged', {
-      contentId: input.contentId,
-    });
-    const { data: updatedOnly, error: updateOnlyError } = await supabase
-      .from('content')
-      .update(brandingPatch as never)
-      .eq('id', input.contentId)
-      .select()
-      .single();
-    if (updateOnlyError) throw new Error(updateOnlyError.message || 'Failed to save branding positions');
-    return { success: true, skipped: true, content: updatedOnly };
-  }
 
   if (!isVideoContent(content)) {
     const sourceUrl = originalImageUrl(content);
@@ -402,6 +433,20 @@ export async function applyTemplateFrames(input: ApplyTemplateFramesInput) {
     template_frames_applied: content.template_frames_applied,
   });
   if (!originalUrl) throw httpError(400, 'This content has no original video to wrap.');
+
+  if (!shouldProcessVideo) {
+    logger.info('apply-template-frames', 'No branding or music changes to bake; leaving media unchanged', {
+      contentId: input.contentId,
+    });
+    const { data: updatedOnly, error: updateOnlyError } = await supabase
+      .from('content')
+      .update({ ...brandingPatch, ...musicPatch } as never)
+      .eq('id', input.contentId)
+      .select()
+      .single();
+    if (updateOnlyError) throw new Error(updateOnlyError.message || 'Failed to save content fields');
+    return { success: true, skipped: true, content: updatedOnly };
+  }
 
   const introDuration = clampDuration(
     input.introDuration ?? content.intro_frame_duration ?? branding?.intro_card_duration,
@@ -469,13 +514,15 @@ export async function applyTemplateFrames(input: ApplyTemplateFramesInput) {
     }
   }
 
-  logger.info('apply-template-frames', 'Baking intro + outro (logos on cards only) into the original video', {
+  logger.info('apply-template-frames', 'Baking intro + outro into the original video', {
     contentId: input.contentId,
     originalUrl: trimUrl(originalUrl),
     introEnabled,
     outroEnabled,
     overlayEnabled,
-    logosOnIntroOutroOnly: hasLogoOverlays(brandingRow),
+    platformLogoThroughout: platformLogoOnMainVideo(brandingRow),
+    vendorLogoThroughout: vendorLogoOnMainVideo(brandingRow),
+    logosOnIntroOutroCards: hasIntroOutroCardLogos(brandingRow),
     introDuration,
     outroDuration,
     hasIntroPrompt: Boolean(introPrompt),
@@ -488,10 +535,41 @@ export async function applyTemplateFrames(input: ApplyTemplateFramesInput) {
   const framedUrl = await withTempDir(async (dir) => {
     const originalPath = path.join(dir, `original.${extensionFromUrl(originalUrl, 'mp4')}`);
     await downloadToFile(originalUrl, originalPath);
+
+    if (!needsBrandingBake && (hasBackgroundMusic || clearingMusic)) {
+      if (hasBackgroundMusic && resolvedMusicTrackId) {
+        const musicPath = path.join(dir, 'music.mp3');
+        await downloadToFile(resolveBackgroundMusicPublicUrl(resolvedMusicTrackId), musicPath);
+        const musicOnlyPath = path.join(dir, 'music-only.mp4');
+        await replaceVideoAudioWithMusic(originalPath, musicPath, musicOnlyPath, { volume: musicVolume });
+        logger.info('apply-template-frames', 'Applied background music only', {
+          contentId: input.contentId,
+          trackId: resolvedMusicTrackId,
+        });
+        return uploadVideo(await readFile(musicOnlyPath), input.contentId);
+      }
+      logger.info('apply-template-frames', 'Removed background music; restoring original clip audio', {
+        contentId: input.contentId,
+      });
+      return uploadVideo(await readFile(originalPath), input.contentId);
+    }
+
     const probe = await probeVideo(originalPath);
     const sourcePath = originalPath;
     const introPlate = await extractPlate(originalPath, dir, 'intro');
     const outroPlate = await extractPlate(originalPath, dir, 'outro');
+    let midPlate: Buffer | null = null;
+    if (platformLogoOnMainVideo(brandingRow) || vendorLogoOnMainVideo(brandingRow)) {
+      const midPlatePath = path.join(dir, 'mid-plate.png');
+      try {
+        const midTime = Math.max(0.12, probe.duration * 0.45);
+        await extractVideoFrame(originalPath, midPlatePath, midTime);
+        midPlate = await readFile(midPlatePath);
+      } catch (error) {
+        logger.warn('apply-template-frames', 'Could not extract mid-video plate for logo grading', error);
+        midPlate = introPlate;
+      }
+    }
 
     logger.info('apply-template-frames', 'Wrapping frames to the original video canvas', {
       contentId: input.contentId,
@@ -500,14 +578,15 @@ export async function applyTemplateFrames(input: ApplyTemplateFramesInput) {
       orientation: orientationOf(probe),
     });
 
-    // Mid-video: follow CTA only. Platform/vendor logos stay on intro + outro cards.
     const overlayPlan = overlayEnabled
       ? await prepareVideoOverlays({
           branding: brandingRow,
           width: probe.width,
           height: probe.height,
           duration: probe.duration,
-          includeLogos: false,
+          scenePlate: midPlate ?? introPlate,
+          includePlatformLogo: platformLogoOnMainVideo(brandingRow),
+          includeVendorLogo: vendorLogoOnMainVideo(brandingRow),
         })
       : [];
     const ffmpegOverlays: FfmpegOverlay[] = [];
@@ -518,9 +597,7 @@ export async function applyTemplateFrames(input: ApplyTemplateFramesInput) {
         path: overlayPath,
         x: overlay.x,
         y: overlay.y,
-        enable: overlay.enable
-          ? `between(t,${overlay.enable.start.toFixed(3)},${overlay.enable.end.toFixed(3)})`
-          : undefined,
+        enable: overlay.enable ? overlayEnableExpression(overlay.enable) : undefined,
       });
     }
 
@@ -559,8 +636,8 @@ export async function applyTemplateFrames(input: ApplyTemplateFramesInput) {
       });
       introFrameUrl = intro.url;
       let introBytes = await fitGraphic(intro.bytes, probe.width, probe.height, introPlate);
-      if (hasLogoOverlays(brandingRow) && !intro.logosIntegrated) {
-        introBytes = await compositeLogoOverlays(introBytes, brandingRow, probe.width, probe.height);
+      if (hasIntroOutroCardLogos(brandingRow) && !intro.logosIntegrated) {
+        introBytes = await compositeLogoOverlays(introBytes, brandingRow, probe.width, probe.height, 'intro_outro');
       }
       introImagePath = path.join(dir, 'intro-card.png');
       await writeFile(introImagePath, introBytes);
@@ -581,8 +658,8 @@ export async function applyTemplateFrames(input: ApplyTemplateFramesInput) {
       });
       outroFrameUrl = outro.url;
       let outroBytes = await fitGraphic(outro.bytes, probe.width, probe.height, outroPlate);
-      if (hasLogoOverlays(brandingRow) && !outro.logosIntegrated) {
-        outroBytes = await compositeLogoOverlays(outroBytes, brandingRow, probe.width, probe.height);
+      if (hasIntroOutroCardLogos(brandingRow) && !outro.logosIntegrated) {
+        outroBytes = await compositeLogoOverlays(outroBytes, brandingRow, probe.width, probe.height, 'intro_outro');
       }
       outroImagePath = path.join(dir, 'outro-card.png');
       await writeFile(outroImagePath, outroBytes);
@@ -618,7 +695,21 @@ export async function applyTemplateFrames(input: ApplyTemplateFramesInput) {
       softBlendExpectedApprox: hardExpected - ((shouldIntro ? 1 : 0) + (shouldOutro ? 1 : 0)) * 0.5,
       outroIncluded: shouldOutro,
     });
-    return uploadVideo(await readFile(outputPath), input.contentId);
+
+    let finalPath = outputPath;
+    if (hasBackgroundMusic && resolvedMusicTrackId) {
+      const musicPath = path.join(dir, 'music.mp3');
+      await downloadToFile(resolveBackgroundMusicPublicUrl(resolvedMusicTrackId), musicPath);
+      const withMusicPath = path.join(dir, 'framed-with-music.mp4');
+      await replaceVideoAudioWithMusic(finalPath, musicPath, withMusicPath, { volume: musicVolume });
+      finalPath = withMusicPath;
+      logger.info('apply-template-frames', 'Replaced video audio with background music', {
+        contentId: input.contentId,
+        trackId: resolvedMusicTrackId,
+      });
+    }
+
+    return uploadVideo(await readFile(finalPath), input.contentId);
   });
 
   const { data: updated, error: updateError } = await supabase
@@ -636,6 +727,8 @@ export async function applyTemplateFrames(input: ApplyTemplateFramesInput) {
       template_frames_applied: true,
       preprocessing_status: 'completed',
       ...brandingPatch,
+      background_music_track_id: resolvedMusicTrackId,
+      background_music_volume: musicVolume,
     } as never)
     .eq('id', input.contentId)
     .select()

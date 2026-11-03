@@ -975,3 +975,60 @@ export async function enhanceVideoQuality(inputPath: string, outputPath: string)
   args.push('-movflags', '+faststart', outputPath);
   await run(bin('ffmpeg'), args);
 }
+
+export async function replaceVideoAudioWithMusic(
+  videoPath: string,
+  musicPath: string,
+  outputPath: string,
+  options: { volume?: number; fadeOutSeconds?: number } = {},
+) {
+  const probe = await probeVideo(videoPath);
+  const duration = probe.duration;
+  if (!duration || duration <= 0) {
+    throw new Error('Could not determine video duration for background music');
+  }
+  const volume = typeof options.volume === 'number' && Number.isFinite(options.volume)
+    ? Math.min(1, Math.max(0, options.volume))
+    : 1;
+  const fadeOut = Math.min(options.fadeOutSeconds ?? 1, duration / 2);
+  const fadeStart = Math.max(0, duration - fadeOut);
+
+  const audioFilters = [
+    `aloop=loop=-1:size=2e+09`,
+    `atrim=0:${duration.toFixed(3)}`,
+    'asetpts=PTS-STARTPTS',
+    `volume=${volume.toFixed(3)}`,
+  ];
+  if (fadeOut > 0.05) {
+    audioFilters.push(`afade=t=out:st=${fadeStart.toFixed(3)}:d=${fadeOut.toFixed(3)}`);
+  }
+
+  await run(bin('ffmpeg'), [
+    '-y',
+    '-i',
+    videoPath,
+    '-i',
+    musicPath,
+    '-filter_complex',
+    `[1:a]${audioFilters.join(',')}[aout]`,
+    '-map',
+    '0:v:0',
+    '-map',
+    '[aout]',
+    '-c:v',
+    'copy',
+    '-c:a',
+    'aac',
+    '-ar',
+    '44100',
+    '-ac',
+    '2',
+    '-b:a',
+    '192k',
+    '-t',
+    duration.toFixed(3),
+    '-movflags',
+    '+faststart',
+    outputPath,
+  ]);
+}

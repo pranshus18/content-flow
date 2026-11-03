@@ -31,6 +31,7 @@ export interface BrandingSettings {
   follow_cta_text?: string | null;
   follow_cta_start_seconds?: number | null;
   follow_cta_duration?: number | null;
+  follow_cta_repeat_seconds?: number | null;
   created_at: string;
   updated_at: string;
 }

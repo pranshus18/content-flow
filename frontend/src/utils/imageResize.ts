@@ -705,8 +705,8 @@ export async function resizeImageForPlatform(
     img.onload = () => {
       try {
         // Calculate dimensions maintaining aspect ratio
-        let width = img.width;
-        let height = img.height;
+        const width = img.width;
+        const height = img.height;
         const currentAspectRatio = width / height;
 
         // Calculate dimensions to fit within target while maintaining aspect ratio (FIT mode)
