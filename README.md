@@ -47,3 +47,22 @@ curl http://localhost:8081/health
 npm run dev:frontend
 npm run dev:backend
 ```
+
+## Deploy: Vercel (frontend) + Render (backend)
+
+**Render (API only)**
+
+- Root: repo root or `backend/` if you use a backend-only service
+- Build: `npm install` (no frontend build required)
+- Start: `npm run start --prefix backend` or `npm start` from root
+- Env: all keys from `backend/.env.example`
+- Set `FRONTEND_ORIGIN` to your Vercel URL (e.g. `https://your-app.vercel.app`)
+- Leave `SERVE_FRONTEND` unset or `false`
+
+**Vercel (UI)**
+
+- Root Directory: `frontend`
+- Framework: Vite (or use `frontend/vercel.json`)
+- Env: `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_API_URL=https://your-service.onrender.com`
+
+Do **not** run `vite` / `npm run dev` on Render or as the Vercel start command — Vercel serves the static `dist` build.

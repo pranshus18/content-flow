@@ -58,7 +58,26 @@ export function loadBackgroundMusicCatalog(): BackgroundMusicTrack[] {
   return Array.isArray(tracks) ? tracks : [];
 }
 
+export const ADMIN_ASSET_MUSIC_PREFIX = 'asset:';
+
+export function isAdminAssetMusicTrackId(trackId: string): boolean {
+  return typeof trackId === 'string'
+    && trackId.startsWith(ADMIN_ASSET_MUSIC_PREFIX)
+    && trackId.length > ADMIN_ASSET_MUSIC_PREFIX.length;
+}
+
+export function toAdminAssetMusicTrackId(assetId: string): string {
+  return `${ADMIN_ASSET_MUSIC_PREFIX}${assetId}`;
+}
+
+export function parseAdminAssetMusicTrackId(trackId: string): string | null {
+  if (!isAdminAssetMusicTrackId(trackId)) return null;
+  const id = trackId.slice(ADMIN_ASSET_MUSIC_PREFIX.length).trim();
+  return id || null;
+}
+
 export function getBackgroundMusicTrack(id: string): BackgroundMusicTrack | undefined {
+  if (isAdminAssetMusicTrackId(id)) return undefined;
   const resolved = resolveBackgroundMusicTrackId(id);
   return loadBackgroundMusicCatalog().find((track) => track.id === resolved);
 }

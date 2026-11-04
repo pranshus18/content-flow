@@ -22,11 +22,14 @@ export default defineConfig(({ mode }) => ({
     host: "::",
     port: 8080,
     proxy: apiProxy,
+    // Dev-only. On Render use `npm run build` + backend `start`, not `vite`.
+    allowedHosts: [".onrender.com", "localhost", "127.0.0.1"],
   },
   preview: {
     host: "::",
     port: 8080,
     proxy: apiProxy,
+    allowedHosts: [".onrender.com", "localhost", "127.0.0.1"],
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
   resolve: {

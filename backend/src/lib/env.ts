@@ -11,9 +11,18 @@ function read(name: string, fallback = ''): string {
   return value;
 }
 
+const nodeEnv = read('NODE_ENV', 'development');
+
 export const env = {
+  nodeEnv,
+  isProduction: nodeEnv === 'production',
   port: Number(read('PORT', '8081')),
+  /** Comma-separated browser origins allowed for CORS (e.g. Vercel app URL). */
   frontendOrigin: read('FRONTEND_ORIGIN', 'http://localhost:8080'),
+  /** Optional extra origins, comma-separated (preview URLs, staging). */
+  frontendExtraOrigins: read('FRONTEND_EXTRA_ORIGINS', ''),
+  /** Opt-in: serve frontend/dist from Express (single-host Render). Off when frontend is on Vercel. */
+  serveFrontend: read('SERVE_FRONTEND', '') === 'true',
   supabaseUrl: read('SUPABASE_URL'),
   supabaseAnonKey: read('SUPABASE_ANON_KEY'),
   supabaseServiceRoleKey: read('SUPABASE_SERVICE_ROLE_KEY'),

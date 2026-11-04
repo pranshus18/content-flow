@@ -17,6 +17,7 @@ import { ImageViewer } from '@/components/ImageViewer';
 import { TemplateFramesSection } from '@/components/TemplateFramesSection';
 import { BackgroundMusicSection } from '@/components/BackgroundMusicSection';
 import { ContentItem } from '@/hooks/useContent';
+import { uploadAdminAsset } from '@/lib/adminAssets';
 
 interface AdminEditDialogProps {
   open: boolean;
@@ -348,24 +349,10 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
 
     setUploadingLogo(kind);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('User not authenticated');
-
-      const fileExt = file.name.split('.').pop();
-      const filePath = `${user.id}/branding/${kind}-${content.id}-${Date.now()}.${fileExt}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('content-media')
-        .upload(filePath, file, {
-          cacheControl: '3600',
-          upsert: false,
-        });
-
-      if (uploadError) throw uploadError;
-
-      const { data: { publicUrl } } = supabase.storage
-        .from('content-media')
-        .getPublicUrl(filePath);
+      const asset = await uploadAdminAsset(file, {
+        category: kind === 'platform' ? 'platform_logo' : 'vendor_logo',
+      });
+      const publicUrl = asset.file_url;
 
       if (kind === 'platform') {
         setWatermarkLogoUrlTracked(publicUrl);
@@ -527,7 +514,7 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
   return (
     <>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[700px] max-h-[90vh] bg-card border-border flex flex-col">
+      <DialogContent className="w-[min(920px,calc(100vw-1.5rem))] max-w-none max-h-[90vh] bg-card border-border flex flex-col overflow-hidden">
           <DialogHeader className="flex-shrink-0">
           <DialogTitle className="text-xl font-semibold">
             Edit Content for Publishing
@@ -569,9 +556,9 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 min-w-0">
             {/* Media Preview */}
-            <div className="space-y-2">
+            <div className="space-y-2 min-w-0">
               <Label>Preprocessed Media Preview</Label>
               <div className="bg-secondary rounded-lg overflow-hidden">
                 {displayMedia ? (
@@ -631,10 +618,10 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
             </div>
 
             {/* User's Description */}
-            <div className="space-y-2">
+            <div className="space-y-2 min-w-0">
               <Label>User's Original Description</Label>
               <div className="p-3 bg-secondary rounded-lg min-h-[120px]">
-                <p className="text-sm text-muted-foreground">
+                <p className="text-sm text-muted-foreground break-words">
                   {content.description || 'No description provided'}
                 </p>
               </div>

@@ -1,5 +1,8 @@
 import express from 'express';
 import cors from 'cors';
+import path from 'node:path';
+import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import cron from 'node-cron';
 import { env } from './lib/env.js';
 import { logger } from './lib/logger.js';
@@ -22,18 +25,35 @@ import { usersRouter } from './routes/users.js';
 import { generateTemplateFrameRouter } from './routes/generate-template-frame.js';
 import { applyTemplateFramesRouter } from './routes/apply-template-frames.js';
 import { backgroundMusicRouter } from './routes/background-music.js';
+import { adminAssetsRouter } from './routes/admin-assets.js';
 import { publishContent } from './services/publish-content.js';
 
 const app = express();
 app.set('etag', false);
 
-const allowedOrigins = new Set(
-  [env.frontendOrigin, 'http://localhost:8080', 'http://127.0.0.1:8080', 'http://[::1]:8080'].filter(Boolean),
-);
+function parseOriginList(raw: string): string[] {
+  return raw.split(',').map((s) => s.trim()).filter(Boolean);
+}
+
+const allowedOrigins = new Set([
+  ...parseOriginList(env.frontendOrigin),
+  ...parseOriginList(env.frontendExtraOrigins),
+  'http://localhost:8080',
+  'http://127.0.0.1:8080',
+  'http://[::1]:8080',
+]);
+
+function isAllowedCorsOrigin(origin: string): boolean {
+  if (allowedOrigins.has(origin)) return true;
+  if (/^http:\/\/(localhost|127\.0\.0\.1|\[::1\]|\d+\.\d+\.\d+\.\d+)(:\d+)?$/.test(origin)) return true;
+  if (/^https:\/\/[a-z0-9-]+\.onrender\.com$/i.test(origin)) return true;
+  if (/^https:\/\/[a-z0-9.-]+\.vercel\.app$/i.test(origin)) return true;
+  return false;
+}
 
 app.use(cors({
   origin(origin, callback) {
-    if (!origin || allowedOrigins.has(origin) || /^http:\/\/(localhost|127\.0\.0\.1|\[::1\]|\d+\.\d+\.\d+\.\d+):8080$/.test(origin)) {
+    if (!origin || isAllowedCorsOrigin(origin)) {
       callback(null, true);
       return;
     }
@@ -73,6 +93,7 @@ app.use('/api/generate-caption', requireAuth, requireAdminUser, generateCaptionR
 app.use('/api/generate-template-frame', requireAuth, requireAdminUser, generateTemplateFrameRouter);
 app.use('/api/apply-template-frames', requireAuth, requireAdminUser, applyTemplateFramesRouter);
 app.use('/api/background-music', requireAuth, requireAdminUser, backgroundMusicRouter);
+app.use('/api/admin-assets', requireAuth, requireAdminUser, adminAssetsRouter);
 app.use('/api/preprocess-media', requireAuth, requireAdminUser, preprocessMediaRouter);
 app.use('/api/enhance-media', requireAuth, requireAdminUser, enhanceMediaRouter);
 app.use('/api/publish-social', requireAuth, requireAdminUser, publishSocialRouter);
@@ -82,6 +103,25 @@ app.use('/api/fetch-analytics', requireAuth, requireAdminUser, fetchAnalyticsRou
 app.use('/api', (_req, res) => {
   res.status(404).json({ success: false, error: 'Not found' });
 });
+
+const backendRoot = path.dirname(fileURLToPath(import.meta.url));
+const frontendDist = path.resolve(backendRoot, '../../frontend/dist');
+
+if (env.serveFrontend && existsSync(frontendDist)) {
+  app.use(express.static(frontendDist, { index: false }));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api') || req.path === '/health') {
+      next();
+      return;
+    }
+    res.sendFile(path.join(frontendDist, 'index.html'), (err) => {
+      if (err) next(err);
+    });
+  });
+  logger.info('server', `Serving frontend from ${frontendDist}`);
+} else if (env.serveFrontend) {
+  logger.warn('server', `SERVE_FRONTEND enabled but ${frontendDist} is missing. Run: npm run build --prefix frontend`);
+}
 
 app.use(errorHandler);
 

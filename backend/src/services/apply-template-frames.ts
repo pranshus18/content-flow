@@ -16,8 +16,8 @@ import {
 } from '../lib/video-tools.js';
 import {
   clampMusicVolume,
-  getBackgroundMusicTrack,
-  resolveBackgroundMusicSource,
+  isValidBackgroundMusicTrackId,
+  resolveBackgroundMusicSourceAsync,
 } from '../lib/music-catalog.js';
 import {
   applyLogoOverlaysToImage,
@@ -114,7 +114,7 @@ async function downloadToFile(url: string, destPath: string) {
 }
 
 async function materializeMusicTrack(trackId: string, destPath: string) {
-  const source = resolveBackgroundMusicSource(trackId);
+  const source = await resolveBackgroundMusicSourceAsync(trackId);
   if (source.kind === 'file') {
     await copyFile(source.path, destPath);
     return;
@@ -356,7 +356,7 @@ export async function applyTemplateFrames(input: ApplyTemplateFramesInput) {
   const musicVolume = clampMusicVolume(
     input.backgroundMusicVolume ?? content.background_music_volume ?? 1,
   );
-  if (resolvedMusicTrackId && !getBackgroundMusicTrack(resolvedMusicTrackId)) {
+  if (resolvedMusicTrackId && !(await isValidBackgroundMusicTrackId(resolvedMusicTrackId))) {
     throw httpError(400, `Unknown background music track: ${resolvedMusicTrackId}`);
   }
   const hasBackgroundMusic = Boolean(resolvedMusicTrackId);

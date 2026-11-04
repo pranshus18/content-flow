@@ -1,0 +1,22 @@
+---
+description: On user-requested commits, push to company and personal remotes after committing
+alwaysApply: true
+---
+
+# Git commit and dual-remote push
+
+When the user asks you to **commit** (or equivalent: "commit and push", "save to git", etc.):
+
+1. Follow the full **Git Safety Protocol** from user rules (status, diff, log, stage, commit via HEREDOC, verify with status). Only commit when explicitly requested.
+
+2. **After a successful commit**, push the **current branch** to both remotes:
+   - `company` → `https://github.com/tatvaops/tatva-content-flow.git`
+   - `personal` → `https://github.com/pranshus18/content-flow.git`
+
+   Use `git push -u <remote> HEAD` when the branch has no upstream on that remote; otherwise `git push <remote> HEAD`.
+
+3. Do **not** push to `origin` unless the user asks separately (`origin` is the same repo as `personal`, SSH URL).
+
+4. If one remote push fails, report the error, do not force-push, and do not retry with destructive flags unless the user explicitly requests them.
+
+5. Never push when the user only asked for a local commit with no push language—but in this project, **"commit" implies push to `company` and `personal`** unless they say "commit only" or "no push".

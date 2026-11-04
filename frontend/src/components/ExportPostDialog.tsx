@@ -8,7 +8,11 @@ import { useToast } from '@/hooks/use-toast';
 import { downloadBackend, invokeBackend, saveBlob } from '@/lib/backend';
 import { errorMessage } from '@/lib/utils';
 import type { ContentItem } from '@/hooks/useContent';
-import { backgroundMusicAttributionLine, getBackgroundMusicTrack } from '@/lib/backgroundMusicCatalog';
+import {
+  backgroundMusicAttributionLine,
+  getBackgroundMusicTrack,
+  isAdminAssetMusicTrackId,
+} from '@/lib/backgroundMusicCatalog';
 import {
   Check,
   Copy,
@@ -179,10 +183,15 @@ export function ExportPostDialog({
   const PlatformIcon = platformIcons[pkg?.platform || content?.platform || ''] || FileText;
   const displayMedia = pkg?.mediaUrl || content?.enhanced_media_url || content?.media_url || null;
   const isVideo = pkg?.mediaType === 'video' || content?.media_type === 'video';
-  const musicTrack = content?.background_music_track_id
-    ? getBackgroundMusicTrack(content.background_music_track_id)
+  const musicTrackId = content?.background_music_track_id;
+  const musicTrack = musicTrackId && !isAdminAssetMusicTrackId(musicTrackId)
+    ? getBackgroundMusicTrack(musicTrackId)
     : undefined;
-  const musicCredit = musicTrack ? backgroundMusicAttributionLine(musicTrack) : null;
+  const musicCredit = musicTrack
+    ? backgroundMusicAttributionLine(musicTrack)
+    : musicTrackId && isAdminAssetMusicTrackId(musicTrackId)
+      ? 'Custom background music (your upload) — confirm you have rights to use it.'
+      : null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

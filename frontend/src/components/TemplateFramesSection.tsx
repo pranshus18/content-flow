@@ -11,7 +11,20 @@ import { supabase } from '@/integrations/supabase/client';
 import { invokeBackend } from '@/lib/backend';
 import { errorMessage } from '@/lib/utils';
 import type { ContentItem } from '@/hooks/useContent';
-import { Clapperboard, Loader2, Sparkles, Trash2, Upload, Link as LinkIcon, Wand2 } from 'lucide-react';
+import { AssetPickerDialog } from '@/components/AssetPickerDialog';
+import type { AdminAsset, AdminAssetCategory } from '@/lib/adminAssets';
+import { uploadAdminAsset } from '@/lib/adminAssets';
+import {
+  Clapperboard,
+  FolderOpen,
+  ImageIcon,
+  Loader2,
+  Sparkles,
+  Trash2,
+  Upload,
+  Link as LinkIcon,
+  Wand2,
+} from 'lucide-react';
 
 type FramePosition = 'intro' | 'outro';
 
@@ -113,6 +126,9 @@ export function TemplateFramesSection({
 }: TemplateFramesSectionProps) {
   const { toast } = useToast();
   const [busy, setBusy] = useState<string | null>(null);
+  const [assetPickerTarget, setAssetPickerTarget] = useState<
+    'platform_logo' | 'vendor_logo' | 'intro_frame' | 'outro_frame' | null
+  >(null);
 
   const hasLogos = Boolean(watermarkLogoUrl || vendorLogoUrl);
   const branding = {
@@ -181,18 +197,9 @@ export function TemplateFramesSection({
   const uploadFrame = async (position: FramePosition, file: File) => {
     setBusy(`${position}-upload`);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('You must be signed in to upload a template frame.');
-      const ext = file.name.split('.').pop() || 'png';
-      const filePath = `${user.id}/templates/${content.id}/${position}-${Date.now()}.${ext}`;
-      const { error } = await supabase.storage.from('content-media').upload(filePath, file, {
-        cacheControl: '3600',
-        upsert: false,
-      });
-      if (error) throw error;
-      const { data } = supabase.storage.from('content-media').getPublicUrl(filePath);
-      if (position === 'intro') onIntroFrameUrlChange(data.publicUrl);
-      else onOutroFrameUrlChange(data.publicUrl);
+      const asset = await uploadAdminAsset(file, { category: 'template_frame' });
+      if (position === 'intro') onIntroFrameUrlChange(asset.file_url);
+      else onOutroFrameUrlChange(asset.file_url);
       toast({
         title: 'Frame uploaded',
         description: `Custom ${position} is ready. Click Apply once to save it into the video.`,
@@ -272,10 +279,44 @@ export function TemplateFramesSection({
 
   const locked = busy !== null || uploadingLogo !== null;
 
+  const assetPickerCategories: AdminAssetCategory[] | undefined = (() => {
+    if (assetPickerTarget === 'platform_logo') return ['platform_logo', 'other'];
+    if (assetPickerTarget === 'vendor_logo') return ['vendor_logo', 'other'];
+    if (assetPickerTarget === 'intro_frame' || assetPickerTarget === 'outro_frame') {
+      return ['template_frame', 'other'];
+    }
+    return undefined;
+  })();
+
+  const applyAssetFromLibrary = (asset: AdminAsset) => {
+    switch (assetPickerTarget) {
+      case 'platform_logo':
+        onWatermarkLogoUrlChange(asset.file_url);
+        if (isVideo) onPlatformLogoThroughoutChange(true);
+        break;
+      case 'vendor_logo':
+        onVendorLogoUrlChange(asset.file_url);
+        break;
+      case 'intro_frame':
+        onIntroFrameUrlChange(asset.file_url);
+        break;
+      case 'outro_frame':
+        onOutroFrameUrlChange(asset.file_url);
+        break;
+      default:
+        break;
+    }
+    setAssetPickerTarget(null);
+    toast({
+      title: 'Asset selected',
+      description: 'Click Apply to bake this into the media when you are ready.',
+    });
+  };
+
   return (
-    <div className="space-y-5 p-4 bg-primary/5 rounded-lg border border-primary/20">
-      <div className="flex items-start justify-between gap-3">
-        <div className="space-y-1">
+    <div className="space-y-5 p-4 bg-primary/5 rounded-lg border border-primary/20 min-w-0 overflow-hidden">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+        <div className="space-y-1 min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <Clapperboard className="w-4 h-4 text-primary" />
             <Label className="text-base font-semibold">Ready-to-post branding</Label>
@@ -299,14 +340,14 @@ export function TemplateFramesSection({
           size="sm"
           onClick={apply}
           disabled={locked}
-          className="flex items-center gap-2 shrink-0"
+          className="flex items-center gap-2 shrink-0 w-full sm:w-auto"
         >
           {busy === 'apply' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
           {isVideo ? 'Apply to video' : 'Apply to image'}
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-w-0">
         <EditLogoField
           id="platform-logo"
           label="Platform / company logo"
@@ -315,6 +356,7 @@ export function TemplateFramesSection({
           disabled={locked}
           onUrlChange={onWatermarkLogoUrlChange}
           onFileChange={onPlatformLogoFile}
+          onLibraryClick={() => setAssetPickerTarget('platform_logo')}
           videoPlacement={isVideo && watermarkLogoUrl ? {
             throughout: platformLogoThroughout,
             onThroughoutChange: onPlatformLogoThroughoutChange,
@@ -328,6 +370,7 @@ export function TemplateFramesSection({
           disabled={locked}
           onUrlChange={onVendorLogoUrlChange}
           onFileChange={onVendorLogoFile}
+          onLibraryClick={() => setAssetPickerTarget('vendor_logo')}
           videoPlacement={isVideo && vendorLogoUrl ? {
             throughout: vendorLogoThroughout,
             onThroughoutChange: onVendorLogoThroughoutChange,
@@ -353,8 +396,8 @@ export function TemplateFramesSection({
         />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div className="space-y-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 min-w-0">
+        <div className="space-y-2 min-w-0">
           <Label htmlFor="watermark-position">Platform logo position</Label>
           <Select value={watermarkPosition} onValueChange={onWatermarkPositionChange} disabled={locked}>
             <SelectTrigger id="watermark-position" className="bg-secondary border-border">
@@ -368,7 +411,7 @@ export function TemplateFramesSection({
             </SelectContent>
           </Select>
         </div>
-        <div className="space-y-2">
+        <div className="space-y-2 min-w-0">
           <Label htmlFor="vendor-logo-position">Vendor logo position</Label>
           <Select value={vendorLogoPosition} onValueChange={onVendorLogoPositionChange} disabled={locked}>
             <SelectTrigger id="vendor-logo-position" className="bg-secondary border-border">
@@ -505,6 +548,7 @@ export function TemplateFramesSection({
               onDurationChange={onIntroDurationChange}
               onGenerate={() => generateOne('intro')}
               onUpload={uploadFrame}
+              onLibraryClick={() => setAssetPickerTarget('intro_frame')}
               onClear={() => onIntroFrameUrlChange('')}
             />
             <FrameCard
@@ -519,11 +563,27 @@ export function TemplateFramesSection({
               onDurationChange={onOutroDurationChange}
               onGenerate={() => generateOne('outro')}
               onUpload={uploadFrame}
+              onLibraryClick={() => setAssetPickerTarget('outro_frame')}
               onClear={() => onOutroFrameUrlChange('')}
             />
           </div>
         </div>
       )}
+
+      <AssetPickerDialog
+        open={assetPickerTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setAssetPickerTarget(null);
+        }}
+        onSelect={applyAssetFromLibrary}
+        categories={assetPickerCategories}
+        imagesOnly
+        title={
+          assetPickerTarget === 'intro_frame' || assetPickerTarget === 'outro_frame'
+            ? 'Choose intro / outro frame'
+            : 'Choose logo from library'
+        }
+      />
     </div>
   );
 }
@@ -540,6 +600,7 @@ function FrameCard({
   onDurationChange,
   onGenerate,
   onUpload,
+  onLibraryClick,
   onClear,
 }: {
   position: FramePosition;
@@ -553,6 +614,7 @@ function FrameCard({
   onDurationChange: (value: number) => void;
   onGenerate: () => void;
   onUpload: (position: FramePosition, file: File) => void;
+  onLibraryClick: () => void;
   onClear: () => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
@@ -615,6 +677,10 @@ function FrameCard({
           {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <Upload className="w-3.5 h-3.5 mr-1" />}
           Upload
         </Button>
+        <Button type="button" variant="outline" size="sm" disabled={locked} onClick={onLibraryClick}>
+          <FolderOpen className="w-3.5 h-3.5 mr-1" />
+          Library
+        </Button>
         {imageUrl && (
           <Button type="button" variant="ghost" size="sm" disabled={locked} onClick={onClear} className="text-destructive">
             <Trash2 className="w-3.5 h-3.5" />
@@ -633,6 +699,7 @@ function EditLogoField({
   disabled,
   onUrlChange,
   onFileChange,
+  onLibraryClick,
   videoPlacement,
 }: {
   id: string;
@@ -642,6 +709,7 @@ function EditLogoField({
   disabled: boolean;
   onUrlChange: (value: string) => void;
   onFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onLibraryClick: () => void;
   videoPlacement?: {
     throughout: boolean;
     onThroughoutChange: (throughout: boolean) => void;
@@ -649,74 +717,107 @@ function EditLogoField({
 }) {
   const inputId = `${id}-upload`;
   return (
-    <div className="space-y-2">
-      <Label htmlFor={id}>{label}</Label>
-      <div className="flex items-center gap-3">
-        <Input
-          id={id}
-          type="text"
-          placeholder="Logo URL or upload image"
-          value={value}
-          onChange={(e) => onUrlChange(e.target.value)}
-          disabled={disabled}
-          className="bg-secondary border-border"
-        />
-        <input
-          id={inputId}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          disabled={disabled}
-          onChange={onFileChange}
-        />
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={disabled}
-          onClick={() => document.getElementById(inputId)?.click()}
-          className="flex items-center gap-2 shrink-0"
+    <div className="min-w-0 rounded-lg border border-border/70 bg-background/40 p-3 space-y-3">
+      <Label htmlFor={id} className="text-sm font-medium leading-snug">
+        {label}
+      </Label>
+
+      <div className="flex gap-3 min-w-0">
+        <div
+          className="h-16 w-16 shrink-0 rounded-md border border-border bg-secondary flex items-center justify-center overflow-hidden"
+          aria-hidden={!value}
         >
-          {uploading ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Uploading...
-            </>
+          {value ? (
+            <img src={value} alt="" className="max-h-full max-w-full object-contain p-1" />
           ) : (
-            <>
-              <Upload className="w-4 h-4" />
-              Upload
-            </>
+            <ImageIcon className="w-7 h-7 text-muted-foreground/50" />
           )}
-        </Button>
-        {value ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
+        </div>
+
+        <div className="flex-1 min-w-0 space-y-2">
+          <Input
+            id={id}
+            type="url"
+            placeholder="Paste image URL (optional)"
+            value={value}
+            onChange={(e) => onUrlChange(e.target.value)}
             disabled={disabled}
-            onClick={() => onUrlChange('')}
-            className="shrink-0"
-          >
-            Remove
-          </Button>
-        ) : null}
+            className="bg-secondary border-border h-9 text-xs min-w-0"
+          />
+          <input
+            id={inputId}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            disabled={disabled}
+            onChange={onFileChange}
+          />
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={disabled}
+              onClick={() => document.getElementById(inputId)?.click()}
+              className="h-8"
+            >
+              {uploading ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
+                  Uploading…
+                </>
+              ) : (
+                <>
+                  <Upload className="w-3.5 h-3.5 mr-1.5" />
+                  Upload
+                </>
+              )}
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={disabled}
+              onClick={onLibraryClick}
+              className="h-8"
+            >
+              <FolderOpen className="w-3.5 h-3.5 mr-1.5" />
+              Library
+            </Button>
+            {value ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={disabled}
+                onClick={() => onUrlChange('')}
+                className="h-8 text-muted-foreground hover:text-destructive"
+                aria-label={`Remove ${label}`}
+              >
+                <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+                Clear
+              </Button>
+            ) : null}
+          </div>
+        </div>
       </div>
-      {value ? (
-        <img src={value} alt={`${label} preview`} className="h-12 w-auto object-contain bg-secondary rounded p-1" />
-      ) : (
-        <p className="text-xs text-muted-foreground">No logo yet. Upload a transparent PNG.</p>
+
+      {!value && (
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          Upload a transparent PNG or pick from your asset library.
+        </p>
       )}
+
       {videoPlacement && (
-        <div className="space-y-2 pt-1">
-          <Label className="text-xs">Show on video</Label>
+        <div className="space-y-1.5 pt-1 border-t border-border/50">
+          <Label className="text-xs text-muted-foreground">Show on video</Label>
           <Select
             value={videoPlacement.throughout ? 'throughout' : 'intro_outro'}
             onValueChange={(v) => videoPlacement.onThroughoutChange(v === 'throughout')}
             disabled={disabled}
           >
-            <SelectTrigger className="h-9 bg-secondary border-border text-sm">
-              <SelectValue />
+            <SelectTrigger className="h-9 bg-secondary border-border text-sm w-full min-w-0">
+              <SelectValue placeholder="When to show logo" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="intro_outro">Intro &amp; outro only</SelectItem>

@@ -3,11 +3,14 @@ import { Router } from 'express';
 import type { AuthedRequest } from '../middleware/auth.js';
 import { asyncHandler } from '../lib/http.js';
 import { httpError } from '../lib/http.js';
+import { getServiceClient } from '../lib/supabase.js';
 import {
   bundledMusicPreviewPath,
   getBackgroundMusicTrack,
   getBundledMusicAbsolutePath,
+  isAdminAssetMusicTrackId,
   loadBackgroundMusicCatalog,
+  parseAdminAssetMusicId,
   resolveBackgroundMusicPreviewUrl,
 } from '../lib/music-catalog.js';
 
@@ -19,6 +22,28 @@ backgroundMusicRouter.get('/tracks', asyncHandler(async (_req: AuthedRequest, re
 
 backgroundMusicRouter.get('/preview-url/:trackId', asyncHandler(async (req: AuthedRequest, res) => {
   const trackId = String(req.params.trackId || '').trim();
+
+  if (isAdminAssetMusicTrackId(trackId)) {
+    const assetId = parseAdminAssetMusicId(trackId);
+    const supabase = getServiceClient();
+    const { data, error } = await supabase
+      .from('admin_assets')
+      .select('file_url, name')
+      .eq('id', assetId)
+      .maybeSingle();
+    if (error || !data?.file_url) {
+      throw httpError(404, 'Custom music file not found');
+    }
+    res.json({
+      url: data.file_url,
+      title: data.name,
+      library: 'Your upload',
+      bundled: false,
+      custom: true,
+    });
+    return;
+  }
+
   const track = getBackgroundMusicTrack(trackId);
   if (!track) {
     throw httpError(404, `Unknown background music track: ${trackId}`);

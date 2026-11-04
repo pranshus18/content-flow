@@ -108,7 +108,51 @@ export function resolveBackgroundMusicPreviewUrl(trackId: string): string {
 }
 
 /** Local path for FFmpeg, or remote URL to fetch. */
+export const ADMIN_ASSET_MUSIC_PREFIX = 'asset:';
+
+export function isAdminAssetMusicTrackId(trackId: string): boolean {
+  return typeof trackId === 'string' && trackId.startsWith(ADMIN_ASSET_MUSIC_PREFIX) && trackId.length > ADMIN_ASSET_MUSIC_PREFIX.length;
+}
+
+export function parseAdminAssetMusicId(trackId: string): string | null {
+  if (!isAdminAssetMusicTrackId(trackId)) return null;
+  const id = trackId.slice(ADMIN_ASSET_MUSIC_PREFIX.length).trim();
+  return id || null;
+}
+
+export async function resolveBackgroundMusicSourceAsync(
+  trackId: string,
+): Promise<{ kind: 'file'; path: string } | { kind: 'url'; url: string }> {
+  const assetId = parseAdminAssetMusicId(trackId);
+  if (assetId) {
+    const supabase = getServiceClient();
+    const { data, error } = await supabase
+      .from('admin_assets')
+      .select('file_url, name, mime_type')
+      .eq('id', assetId)
+      .maybeSingle();
+    if (error || !data?.file_url) {
+      throw httpError(404, 'Custom music file not found. Upload it again from Background music or Assets.');
+    }
+    return { kind: 'url', url: data.file_url };
+  }
+  return resolveBackgroundMusicSource(trackId);
+}
+
+export async function isValidBackgroundMusicTrackId(trackId: string): Promise<boolean> {
+  const assetId = parseAdminAssetMusicId(trackId);
+  if (assetId) {
+    const supabase = getServiceClient();
+    const { data } = await supabase.from('admin_assets').select('id').eq('id', assetId).maybeSingle();
+    return Boolean(data);
+  }
+  return Boolean(getBackgroundMusicTrack(trackId));
+}
+
 export function resolveBackgroundMusicSource(trackId: string): { kind: 'file'; path: string } | { kind: 'url'; url: string } {
+  if (isAdminAssetMusicTrackId(trackId)) {
+    throw httpError(400, 'Custom music tracks must be resolved asynchronously');
+  }
   const track = getBackgroundMusicTrack(trackId);
   if (!track) {
     throw httpError(400, `Unknown background music track: ${trackId}`);

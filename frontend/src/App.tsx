@@ -14,6 +14,7 @@ import AdminDashboard from "./pages/AdminDashboard";
 import UsersPage from "./pages/UsersPage";
 import AnalyticsPage from "./pages/AnalyticsPage";
 import SettingsPage from "./pages/SettingsPage";
+import AssetsPage from "./pages/AssetsPage";
 import AuthPage from "./pages/AuthPage";
 import NotFound from "./pages/NotFound";
 
@@ -125,6 +126,14 @@ const App = () => (
             element={
               <AdminRoute>
                 <AdminDashboard />
+              </AdminRoute>
+            }
+          />
+          <Route
+            path="/assets"
+            element={
+              <AdminRoute>
+                <AssetsPage />
               </AdminRoute>
             }
           />
