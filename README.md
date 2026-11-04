@@ -63,6 +63,9 @@ npm run dev:backend
 
 - Root Directory: `frontend`
 - Framework: Vite (or use `frontend/vercel.json`)
-- Env: `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_API_URL=https://your-service.onrender.com`
+- Env: `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`
+- Backend URL — pick one:
+  - **Proxy (easier on Vercel):** leave `VITE_API_URL` unset; set **`API_PROXY_ORIGIN`** = `https://your-service.onrender.com` (no `VITE_` prefix; not exposed to the browser)
+  - **Direct:** set `VITE_API_URL` to the same Render URL (Vercel will warn — confirm it is OK to expose; redeploy)
 
 Do **not** run `vite` / `npm run dev` on Render or as the Vercel start command — Vercel serves the static `dist` build.
