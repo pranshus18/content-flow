@@ -11,7 +11,7 @@ ALTER TABLE public.content
   ADD COLUMN IF NOT EXISTS template_frames_applied BOOLEAN NOT NULL DEFAULT false,
   ADD COLUMN IF NOT EXISTS vendor_logo_url TEXT,
   ADD COLUMN IF NOT EXISTS vendor_logo_position TEXT DEFAULT 'bottom-left',
-  ADD COLUMN IF NOT EXISTS platform_logo_throughout BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS platform_logo_throughout BOOLEAN NOT NULL DEFAULT true,
   ADD COLUMN IF NOT EXISTS vendor_logo_throughout BOOLEAN NOT NULL DEFAULT false,
   ADD COLUMN IF NOT EXISTS background_music_track_id TEXT,
   ADD COLUMN IF NOT EXISTS background_music_volume NUMERIC NOT NULL DEFAULT 1.0;

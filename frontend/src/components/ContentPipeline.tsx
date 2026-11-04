@@ -18,7 +18,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   published: { label: 'Published', color: 'bg-green-500' },
 };
 
-const PIPELINE_ORDER = ['draft', 'pending', 'approved'];
+const PIPELINE_ORDER = ['draft', 'pending', 'approved', 'published'];
 
 export function ContentPipeline({ contents, onStatusChange, onEdit, onDelete, onEnhance }: ContentPipelineProps) {
   return (

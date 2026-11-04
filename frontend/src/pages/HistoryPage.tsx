@@ -73,6 +73,7 @@ export default function HistoryPage() {
                 Pending ({pendingContent.length})
               </TabsTrigger>
               <TabsTrigger value="approved">Approved ({approvedContent.length})</TabsTrigger>
+              <TabsTrigger value="published">Published ({publishedContent.length})</TabsTrigger>
             </TabsList>
 
             <TabsContent value="all" className="space-y-4">
@@ -219,6 +220,8 @@ export default function HistoryPage() {
                         watermarkWebsiteUrl={selectedContent.watermark_website_url}
                         watermarkPosition={selectedContent.watermark_position}
                         vendorLogoPosition={selectedContent.vendor_logo_position}
+                        platformLogoThroughout={selectedContent.platform_logo_throughout !== false}
+                        vendorLogoThroughout={selectedContent.vendor_logo_throughout === true}
                         brandingBaked={selectedContent.preprocessing_status === 'completed'}
                       />
                     </div>
@@ -321,6 +324,8 @@ function ContentCard({
                   watermarkWebsiteUrl={content.watermark_website_url}
                   watermarkPosition={content.watermark_position}
                   vendorLogoPosition={content.vendor_logo_position}
+                  platformLogoThroughout={content.platform_logo_throughout !== false}
+                  vendorLogoThroughout={content.vendor_logo_throughout === true}
                   brandingBaked={content.preprocessing_status === 'completed'}
                 />
               </div>

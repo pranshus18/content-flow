@@ -152,6 +152,8 @@ export function ContentViewDialog({
                     watermarkWebsiteUrl={content.watermark_website_url}
                     watermarkPosition={content.watermark_position}
                     vendorLogoPosition={content.vendor_logo_position}
+                    platformLogoThroughout={content.platform_logo_throughout !== false}
+                    vendorLogoThroughout={content.vendor_logo_throughout === true}
                     introFrameUrl={content.intro_frame_url}
                     outroFrameUrl={content.outro_frame_url}
                     introDuration={content.intro_frame_duration || 3}

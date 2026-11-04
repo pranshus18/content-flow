@@ -3,6 +3,9 @@ node_modules/
 .pnp
 .pnp.js
 
+# Bundled music (run npm run music:download locally; catalog streams from library URLs if missing)
+frontend/public/music-library/*.mp3
+
 # Build / output
 dist/
 dist-ssr/

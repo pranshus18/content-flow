@@ -11,6 +11,7 @@ import {
   X, 
   Edit, 
   Trash2, 
+  Send,
   RefreshCw,
   Heart,
   MessageCircle,
@@ -40,6 +41,7 @@ interface AdminContentCardProps {
   onEnhanceQuality?: () => void;
   isRefreshing?: boolean;
   isEnhancing?: boolean;
+  isPublishing?: boolean;
   showPublishButton?: boolean;
   showAnalytics?: boolean;
   showScheduleButton?: boolean;
@@ -70,11 +72,14 @@ export function AdminContentCard({
   onReject,
   onEdit,
   onDelete,
+  onPublish,
   onSchedule,
   onRefreshAnalytics,
   onEnhanceQuality,
   isRefreshing,
   isEnhancing,
+  isPublishing,
+  showPublishButton,
   showAnalytics,
   showScheduleButton,
 }: AdminContentCardProps) {
@@ -111,6 +116,8 @@ export function AdminContentCard({
                 watermarkWebsiteUrl={content.watermark_website_url}
                 watermarkPosition={content.watermark_position}
                 vendorLogoPosition={content.vendor_logo_position}
+                platformLogoThroughout={content.platform_logo_throughout !== false}
+                vendorLogoThroughout={content.vendor_logo_throughout === true}
                 brandingBaked={content.preprocessing_status === 'completed'}
               />
             ) : (
@@ -246,6 +253,18 @@ export function AdminContentCard({
             Schedule
           </Button>
         )}
+        {showPublishButton && onPublish && (content.status === 'approved' || content.status === 'scheduled') && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={onPublish}
+            className="flex-1"
+            disabled={isPublishing || content.preprocessing_status === 'pending'}
+          >
+            <Send className={cn('w-4 h-4 mr-1', isPublishing && 'animate-pulse')} />
+            {isPublishing ? 'Publishing…' : 'Publish Now'}
+          </Button>
+        )}
         {onEnhanceQuality && content.media_url && (
           <Button
             size="sm"
@@ -267,7 +286,7 @@ export function AdminContentCard({
         {displayMedia && (
           <Button
             size="sm"
-            variant={content.status === 'approved' ? 'default' : 'outline'}
+            variant="outline"
             onClick={() => setExportOpen(true)}
             disabled={content.preprocessing_status === 'pending'}
             className="flex-1"

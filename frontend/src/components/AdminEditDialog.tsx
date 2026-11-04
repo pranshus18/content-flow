@@ -59,7 +59,7 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
   const [watermarkWebsiteUrl, setWatermarkWebsiteUrl] = useState('');
   const [watermarkPosition, setWatermarkPosition] = useState('bottom-right');
   const [vendorLogoPosition, setVendorLogoPosition] = useState('bottom-left');
-  const [platformLogoThroughout, setPlatformLogoThroughout] = useState(false);
+  const [platformLogoThroughout, setPlatformLogoThroughout] = useState(true);
   const [vendorLogoThroughout, setVendorLogoThroughout] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState<string | null>(null);
   const [followCtaEnabled, setFollowCtaEnabled] = useState(true);
@@ -186,7 +186,7 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
     setWatermarkWebsiteUrl(content.watermark_website_url || '');
     setWatermarkPosition(content.watermark_position || 'bottom-right');
     setVendorLogoPosition(content.vendor_logo_position || 'bottom-left');
-    setPlatformLogoThroughout(content.platform_logo_throughout === true);
+    setPlatformLogoThroughout(content.platform_logo_throughout !== false);
     setVendorLogoThroughout(content.vendor_logo_throughout === true);
     setFollowCtaEnabled(false);
     setFollowCtaText('Follow us');
@@ -221,7 +221,7 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
     if (updated.watermark_position) setWatermarkPosition(updated.watermark_position);
     if (updated.vendor_logo_position) setVendorLogoPosition(updated.vendor_logo_position);
     if (updated.platform_logo_throughout != null) {
-      setPlatformLogoThroughout(updated.platform_logo_throughout === true);
+      setPlatformLogoThroughout(updated.platform_logo_throughout !== false);
     }
     if (updated.vendor_logo_throughout != null) {
       setVendorLogoThroughout(updated.vendor_logo_throughout === true);
@@ -367,8 +367,10 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
         .from('content-media')
         .getPublicUrl(filePath);
 
-      if (kind === 'platform') setWatermarkLogoUrlTracked(publicUrl);
-      else setVendorLogoUrlTracked(publicUrl);
+      if (kind === 'platform') {
+        setWatermarkLogoUrlTracked(publicUrl);
+        setPlatformLogoThroughoutTracked(true);
+      } else setVendorLogoUrlTracked(publicUrl);
       const uploadedForVideo = content.media_type === 'video'
         || /\.(mp4|mov|webm|avi|mkv)(\?|$)/i.test(content.media_url || content.enhanced_media_url || '');
       toast({
@@ -441,7 +443,7 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
         || introPrompt.trim()
         || outroPrompt.trim()
         || followCtaEnabled
-        || platformLogoThroughout !== (content.platform_logo_throughout === true)
+        || platformLogoThroughout !== (content.platform_logo_throughout !== false)
         || vendorLogoThroughout !== (content.vendor_logo_throughout === true)
         || hasMusicWork,
       );
@@ -528,7 +530,7 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
       <DialogContent className="sm:max-w-[700px] max-h-[90vh] bg-card border-border flex flex-col">
           <DialogHeader className="flex-shrink-0">
           <DialogTitle className="text-xl font-semibold">
-            Edit Content
+            Edit Content for Publishing
           </DialogTitle>
         </DialogHeader>
 
@@ -563,7 +565,7 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
-              Select the platform this content is prepared for. Changing platform will re-process the media for optimal dimensions.
+              Select the platform where this content will be published. Changing platform will re-process the media for optimal dimensions.
             </p>
           </div>
 

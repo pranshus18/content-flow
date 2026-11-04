@@ -1,4 +1,4 @@
-import { readFile, writeFile } from 'node:fs/promises';
+import { copyFile, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import sharp from 'sharp';
 import { getServiceClient } from '../lib/supabase.js';
@@ -17,7 +17,7 @@ import {
 import {
   clampMusicVolume,
   getBackgroundMusicTrack,
-  resolveBackgroundMusicPublicUrl,
+  resolveBackgroundMusicSource,
 } from '../lib/music-catalog.js';
 import {
   applyLogoOverlaysToImage,
@@ -111,6 +111,15 @@ async function downloadToFile(url: string, destPath: string) {
     throw new Error(`Failed to download media (${response.status})`);
   }
   await writeFile(destPath, Buffer.from(await response.arrayBuffer()));
+}
+
+async function materializeMusicTrack(trackId: string, destPath: string) {
+  const source = resolveBackgroundMusicSource(trackId);
+  if (source.kind === 'file') {
+    await copyFile(source.path, destPath);
+    return;
+  }
+  await downloadToFile(source.url, destPath);
 }
 
 async function uploadVideo(bytes: Buffer, contentId: string) {
@@ -319,7 +328,7 @@ export async function applyTemplateFrames(input: ApplyTemplateFramesInput) {
     watermark_enabled: true,
     platform_logo_throughout: input.branding?.platform_logo_throughout
       ?? (content.platform_logo_throughout as boolean | null | undefined)
-      ?? false,
+      ?? true,
     vendor_logo_throughout: input.branding?.vendor_logo_throughout
       ?? (content.vendor_logo_throughout as boolean | null | undefined)
       ?? false,
@@ -381,7 +390,7 @@ export async function applyTemplateFrames(input: ApplyTemplateFramesInput) {
     watermark_website_url: brandingRow.company_website_url || content.watermark_website_url || null,
     watermark_position: platformPosition,
     vendor_logo_position: vendorPosition,
-    platform_logo_throughout: brandingRow.platform_logo_throughout === true,
+    platform_logo_throughout: brandingRow.platform_logo_throughout !== false,
     vendor_logo_throughout: brandingRow.vendor_logo_throughout === true,
   };
 
@@ -539,7 +548,7 @@ export async function applyTemplateFrames(input: ApplyTemplateFramesInput) {
     if (!needsBrandingBake && (hasBackgroundMusic || clearingMusic)) {
       if (hasBackgroundMusic && resolvedMusicTrackId) {
         const musicPath = path.join(dir, 'music.mp3');
-        await downloadToFile(resolveBackgroundMusicPublicUrl(resolvedMusicTrackId), musicPath);
+        await materializeMusicTrack(resolvedMusicTrackId, musicPath);
         const musicOnlyPath = path.join(dir, 'music-only.mp4');
         await replaceVideoAudioWithMusic(originalPath, musicPath, musicOnlyPath, { volume: musicVolume });
         logger.info('apply-template-frames', 'Applied background music only', {
@@ -558,17 +567,19 @@ export async function applyTemplateFrames(input: ApplyTemplateFramesInput) {
     const sourcePath = originalPath;
     const introPlate = await extractPlate(originalPath, dir, 'intro');
     const outroPlate = await extractPlate(originalPath, dir, 'outro');
-    let midPlate: Buffer | null = null;
+    const scenePlates: Buffer[] = [];
     if (platformLogoOnMainVideo(brandingRow) || vendorLogoOnMainVideo(brandingRow)) {
+      if (introPlate) scenePlates.push(introPlate);
       const midPlatePath = path.join(dir, 'mid-plate.png');
       try {
         const midTime = Math.max(0.12, probe.duration * 0.45);
         await extractVideoFrame(originalPath, midPlatePath, midTime);
-        midPlate = await readFile(midPlatePath);
+        scenePlates.push(await readFile(midPlatePath));
       } catch (error) {
         logger.warn('apply-template-frames', 'Could not extract mid-video plate for logo grading', error);
-        midPlate = introPlate;
       }
+      if (outroPlate) scenePlates.push(outroPlate);
+      if (!scenePlates.length && introPlate) scenePlates.push(introPlate);
     }
 
     logger.info('apply-template-frames', 'Wrapping frames to the original video canvas', {
@@ -584,7 +595,7 @@ export async function applyTemplateFrames(input: ApplyTemplateFramesInput) {
           width: probe.width,
           height: probe.height,
           duration: probe.duration,
-          scenePlate: midPlate ?? introPlate,
+          scenePlate: scenePlates.length ? scenePlates : introPlate,
           includePlatformLogo: platformLogoOnMainVideo(brandingRow),
           includeVendorLogo: vendorLogoOnMainVideo(brandingRow),
         })
@@ -699,7 +710,7 @@ export async function applyTemplateFrames(input: ApplyTemplateFramesInput) {
     let finalPath = outputPath;
     if (hasBackgroundMusic && resolvedMusicTrackId) {
       const musicPath = path.join(dir, 'music.mp3');
-      await downloadToFile(resolveBackgroundMusicPublicUrl(resolvedMusicTrackId), musicPath);
+      await materializeMusicTrack(resolvedMusicTrackId, musicPath);
       const withMusicPath = path.join(dir, 'framed-with-music.mp4');
       await replaceVideoAudioWithMusic(finalPath, musicPath, withMusicPath, { volume: musicVolume });
       finalPath = withMusicPath;

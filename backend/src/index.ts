@@ -21,6 +21,7 @@ import { publishingSettingsRouter } from './routes/publishing-settings.js';
 import { usersRouter } from './routes/users.js';
 import { generateTemplateFrameRouter } from './routes/generate-template-frame.js';
 import { applyTemplateFramesRouter } from './routes/apply-template-frames.js';
+import { backgroundMusicRouter } from './routes/background-music.js';
 import { publishContent } from './services/publish-content.js';
 
 const app = express();
@@ -71,6 +72,7 @@ app.use('/api/users', requireAuth, requireAdminUser, usersRouter);
 app.use('/api/generate-caption', requireAuth, requireAdminUser, generateCaptionRouter);
 app.use('/api/generate-template-frame', requireAuth, requireAdminUser, generateTemplateFrameRouter);
 app.use('/api/apply-template-frames', requireAuth, requireAdminUser, applyTemplateFramesRouter);
+app.use('/api/background-music', requireAuth, requireAdminUser, backgroundMusicRouter);
 app.use('/api/preprocess-media', requireAuth, requireAdminUser, preprocessMediaRouter);
 app.use('/api/enhance-media', requireAuth, requireAdminUser, enhanceMediaRouter);
 app.use('/api/publish-social', requireAuth, requireAdminUser, publishSocialRouter);

@@ -408,15 +408,7 @@ async function renderLogoBadge(
     2.8,
   );
 
-  const faded = await sharp(fitted)
-    .composite([{
-      input: Buffer.from([255, 255, 255, Math.round(255 * 0.92)]),
-      raw: { width: 1, height: 1, channels: 4 },
-      tile: true,
-      blend: 'dest-in',
-    }])
-    .png()
-    .toBuffer();
+  const faded = fitted;
 
   const meta = await sharp(faded).metadata();
   const logoW = meta.width || maxW;
@@ -535,9 +527,10 @@ function imageCtaSubtitle(branding: BrandingOverlayRow | null) {
   return website || null;
 }
 
+/** Company logo on the main clip unless explicitly limited to intro/outro cards only. */
 export function platformLogoOnMainVideo(branding: BrandingOverlayRow | null) {
   if (!branding || branding.watermark_enabled === false || !branding.company_logo_url) return false;
-  return branding.platform_logo_throughout === true;
+  return branding.platform_logo_throughout !== false;
 }
 
 export function vendorLogoOnMainVideo(branding: BrandingOverlayRow | null) {
@@ -545,9 +538,10 @@ export function vendorLogoOnMainVideo(branding: BrandingOverlayRow | null) {
   return branding.vendor_logo_throughout === true;
 }
 
+/** Company logo on intro/outro template cards (always when set — pairs with main-clip burn when throughout). */
 export function platformLogoOnIntroOutro(branding: BrandingOverlayRow | null) {
   if (!branding || branding.watermark_enabled === false || !branding.company_logo_url) return false;
-  return branding.platform_logo_throughout !== true;
+  return true;
 }
 
 export function vendorLogoOnIntroOutro(branding: BrandingOverlayRow | null) {
@@ -673,9 +667,13 @@ export async function prepareVideoOverlays(input: {
   } = input;
   if (!branding) return [];
 
-  const margin = Math.max(16, Math.round(Math.min(width, height) * 0.035));
-  const logoMaxW = even(width * 0.16);
-  const logoMaxH = even(height * 0.14);
+  const portrait = height > width * 1.05;
+  const margin = Math.max(
+    18,
+    Math.round(Math.min(width, height) * (portrait ? 0.048 : 0.035)),
+  );
+  const logoMaxW = even(width * (portrait ? 0.22 : 0.16));
+  const logoMaxH = even(height * (portrait ? 0.1 : 0.14));
   const overlays: PreparedOverlay[] = [];
   const platformPosition = asPosition(branding.watermark_position, 'bottom-right');
   const vendorPosition = asPosition(branding.vendor_logo_position, 'bottom-left');

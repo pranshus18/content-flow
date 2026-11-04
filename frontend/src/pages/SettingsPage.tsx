@@ -91,6 +91,27 @@ export default function SettingsPage() {
               </CardContent>
             </Card>
 
+            {/* Platform Connections */}
+            <Card className="bg-card border-border">
+              <CardHeader>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-secondary flex items-center justify-center">
+                    <Shield className="w-5 h-5 text-foreground" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-lg">Platform Connections</CardTitle>
+                    <CardDescription>Connect your social media accounts for direct publishing</CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Publishing uses API credentials configured on the backend (Instagram, Facebook, YouTube).
+                  Contact your administrator if posts fail with a token or configuration error.
+                </p>
+              </CardContent>
+            </Card>
+
             {/* Notifications */}
             <Card className="bg-card border-border">
               <CardHeader>

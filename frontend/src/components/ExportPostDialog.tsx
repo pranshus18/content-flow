@@ -8,6 +8,7 @@ import { useToast } from '@/hooks/use-toast';
 import { downloadBackend, invokeBackend, saveBlob } from '@/lib/backend';
 import { errorMessage } from '@/lib/utils';
 import type { ContentItem } from '@/hooks/useContent';
+import { backgroundMusicAttributionLine, getBackgroundMusicTrack } from '@/lib/backgroundMusicCatalog';
 import {
   Check,
   Copy,
@@ -54,7 +55,7 @@ const platformIcons: Record<string, typeof Instagram> = {
   youtube: Youtube,
 };
 
-function formatDetails(pkg: PostPackage) {
+function formatDetails(pkg: PostPackage, musicCredit?: string | null) {
   return [
     `Platform: ${pkg.platform}`,
     `Title: ${pkg.title}`,
@@ -67,6 +68,9 @@ function formatDetails(pkg: PostPackage) {
     '',
     'Caption to paste:',
     pkg.caption || '(no caption yet)',
+    musicCredit ? '' : null,
+    musicCredit ? 'Music credit (required for royalty-free license):' : null,
+    musicCredit || null,
     '',
     'How to post:',
     ...pkg.postingNotes.map((note) => `- ${note}`),
@@ -165,7 +169,7 @@ export function ExportPostDialog({
 
   const handleDownloadDetails = () => {
     if (!pkg) return;
-    saveBlob(new Blob([formatDetails(pkg)], { type: 'text/plain;charset=utf-8' }), `${pkg.platform}-${pkg.title.replace(/[^\w]+/g, '-').slice(0, 40)}-post-details.txt`);
+    saveBlob(new Blob([formatDetails(pkg, musicCredit)], { type: 'text/plain;charset=utf-8' }), `${pkg.platform}-${pkg.title.replace(/[^\w]+/g, '-').slice(0, 40)}-post-details.txt`);
     toast({
       title: 'Post details downloaded',
       description: 'A text file with title, caption, hashtags, and posting notes was saved.',
@@ -175,6 +179,10 @@ export function ExportPostDialog({
   const PlatformIcon = platformIcons[pkg?.platform || content?.platform || ''] || FileText;
   const displayMedia = pkg?.mediaUrl || content?.enhanced_media_url || content?.media_url || null;
   const isVideo = pkg?.mediaType === 'video' || content?.media_type === 'video';
+  const musicTrack = content?.background_music_track_id
+    ? getBackgroundMusicTrack(content.background_music_track_id)
+    : undefined;
+  const musicCredit = musicTrack ? backgroundMusicAttributionLine(musicTrack) : null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -208,6 +216,8 @@ export function ExportPostDialog({
                     watermarkWebsiteUrl={content?.watermark_website_url}
                     watermarkPosition={content?.watermark_position}
                     vendorLogoPosition={content?.vendor_logo_position}
+                    platformLogoThroughout={content?.platform_logo_throughout !== false}
+                    vendorLogoThroughout={content?.vendor_logo_throughout === true}
                     brandingBaked={content?.preprocessing_status === 'completed'}
                   />
                 ) : (
@@ -302,6 +312,15 @@ export function ExportPostDialog({
               </div>
             ) : null}
 
+            {musicCredit ? (
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Music credit (include in caption)</p>
+                <p className="text-xs text-muted-foreground p-3 rounded-lg border border-border bg-secondary/40">
+                  {musicCredit}
+                </p>
+              </div>
+            ) : null}
+
             {pkg?.postingNotes?.length ? (
               <div className="text-sm text-muted-foreground space-y-1">
                 <p className="font-medium text-foreground">How to post separately</p>
@@ -335,7 +354,7 @@ export function ExportPostDialog({
                 type="button"
                 variant="outline"
                 disabled={!pkg}
-                onClick={() => pkg && copyText(formatDetails(pkg), 'all')}
+                onClick={() => pkg && copyText(formatDetails(pkg, musicCredit), 'all')}
               >
                 {copied === 'all' ? <Check className="w-4 h-4 mr-2" /> : <Copy className="w-4 h-4 mr-2" />}
                 Copy all details

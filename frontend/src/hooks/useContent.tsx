@@ -288,7 +288,7 @@ function useContentController() {
       vendor_logo_position: vendorLogoPosition || null,
       ...(logoVideoScope
         ? {
-            platform_logo_throughout: logoVideoScope.platform_logo_throughout === true,
+            platform_logo_throughout: logoVideoScope.platform_logo_throughout !== false,
             vendor_logo_throughout: logoVideoScope.vendor_logo_throughout === true,
           }
         : {}),

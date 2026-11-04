@@ -45,7 +45,7 @@ export function VideoPlayer({
   watermarkWebsiteUrl,
   watermarkPosition = 'bottom-right',
   vendorLogoPosition = 'bottom-left',
-  platformLogoThroughout = false,
+  platformLogoThroughout = true,
   vendorLogoThroughout = false,
   introFrameUrl,
   outroFrameUrl,
@@ -138,8 +138,9 @@ export function VideoPlayer({
 
   const onIntroOutroCards = templatePhase === 'intro' || templatePhase === 'outro';
   const onMainClip = templatePhase === 'video' || (templatePhase === 'idle' && !showIntroPreview);
+  const platformOnMainClip = platformLogoThroughout !== false;
   const showPlatform = !brandingBaked && effectiveLogoUrl && (
-    (platformLogoThroughout && onMainClip) || (!platformLogoThroughout && onIntroOutroCards)
+    (platformOnMainClip && onMainClip) || onIntroOutroCards
   );
   const showVendor = !brandingBaked && effectiveVendorUrl && (
     (vendorLogoThroughout && onMainClip) || (!vendorLogoThroughout && onIntroOutroCards)
@@ -194,7 +195,7 @@ export function VideoPlayer({
             <img
               src={effectiveLogoUrl!}
               alt="Platform logo"
-              className="h-9 w-auto object-contain max-w-[130px] opacity-90"
+              className="h-10 w-auto object-contain max-w-[150px] opacity-95 drop-shadow-[0_0_6px_rgba(0,0,0,0.35)]"
               onError={(e) => {
                 (e.target as HTMLImageElement).style.display = 'none';
               }}

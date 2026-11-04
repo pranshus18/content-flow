@@ -5,17 +5,18 @@ import { AdminEditDialog } from '@/components/AdminEditDialog';
 import { useContent, ContentItem } from '@/hooks/useContent';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { RefreshCw, Users, FileCheck, Shield, AlertCircle } from 'lucide-react';
+import { RefreshCw, Users, FileCheck, TrendingUp, Shield, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import { errorMessage } from '@/lib/utils';
 
 export default function AdminDashboard() {
-  const { contents, loading, updateAdminFields, updateStatus, updateContent, deleteContent, fetchAnalytics, refetch, preprocessMedia, enhanceMedia } = useContent();
+  const { contents, loading, updateAdminFields, updateStatus, updateContent, deleteContent, publishToSocial, fetchAnalytics, refetch, preprocessMedia, enhanceMedia } = useContent();
   const [editingContent, setEditingContent] = useState<ContentItem | null>(null);
   const [refreshingAnalytics, setRefreshingAnalytics] = useState<string | null | 'all'>(null);
   const [enhancingContent, setEnhancingContent] = useState<string | null>(null);
+  const [publishingContent, setPublishingContent] = useState<string | null>(null);
   const { toast } = useToast();
 
   // Filter content by status
@@ -112,6 +113,16 @@ export default function AdminDashboard() {
     }
   }, [loading, publishedContent.length, fetchAnalytics, refetch, hasAutoFetched]);
 
+
+  const handlePublish = async (content: ContentItem) => {
+    setPublishingContent(content.id);
+    try {
+      await publishToSocial(content.id);
+      await refetch();
+    } finally {
+      setPublishingContent(null);
+    }
+  };
 
   const handleEnhanceQuality = async (content: ContentItem) => {
     const sourceUrl = content.enhanced_media_url || content.media_url;
@@ -213,7 +224,7 @@ export default function AdminDashboard() {
               </Badge>
             </div>
             <div className="text-xs text-muted-foreground">
-              Review • Edit
+              Review • Edit • Publish
             </div>
           </div>
         </div>
@@ -232,7 +243,7 @@ export default function AdminDashboard() {
                     Admin
                   </Badge>
                 </h1>
-                <p className="text-muted-foreground mt-1">Review and edit user-submitted content</p>
+                <p className="text-muted-foreground mt-1">Review, edit, and publish user-submitted content</p>
               </div>
             </div>
             <Button variant="outline" onClick={refetch}>
@@ -247,13 +258,13 @@ export default function AdminDashboard() {
               <AlertCircle className="h-4 w-4 text-primary" />
               <AlertTitle className="text-primary">Admin Portal Active</AlertTitle>
               <AlertDescription>
-                You're viewing the admin dashboard. Content uploaded by users will appear here for review.
+                You're viewing the admin dashboard. Content uploaded by users will appear here for review and publishing.
               </AlertDescription>
             </Alert>
           )}
 
           {/* Stats */}
-          <div className="grid grid-cols-3 gap-4 mb-8">
+          <div className="grid grid-cols-4 gap-4 mb-8">
             <div className="bg-card border border-border rounded-xl p-4">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-yellow-500/10 rounded-lg">
@@ -272,7 +283,18 @@ export default function AdminDashboard() {
                 </div>
                 <div>
                   <p className="text-2xl font-bold">{approvedContent.length}</p>
-                  <p className="text-sm text-muted-foreground">Approved</p>
+                  <p className="text-sm text-muted-foreground">Ready to Publish</p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-card border border-border rounded-xl p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-green-500/10 rounded-lg">
+                  <TrendingUp className="w-5 h-5 text-green-500" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">{publishedContent.length}</p>
+                  <p className="text-sm text-muted-foreground">Published</p>
                 </div>
               </div>
             </div>
@@ -349,7 +371,7 @@ export default function AdminDashboard() {
             <TabsContent value="approved" className="space-y-4">
               {approvedContent.length === 0 ? (
                 <div className="text-center py-12 text-muted-foreground">
-                  No approved content yet
+                  No approved content ready to publish
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
@@ -359,8 +381,11 @@ export default function AdminDashboard() {
                       content={content}
                       onEdit={() => setEditingContent(content)}
                       onDelete={() => deleteContent(content.id)}
+                      onPublish={() => handlePublish(content)}
                       onEnhanceQuality={() => handleEnhanceQuality(content)}
                       isEnhancing={enhancingContent === content.id}
+                      isPublishing={publishingContent === content.id}
+                      showPublishButton
                     />
                   ))}
                 </div>

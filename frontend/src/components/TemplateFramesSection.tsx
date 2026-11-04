@@ -386,7 +386,7 @@ export function TemplateFramesSection({
       <p className="text-xs text-muted-foreground">
         Each logo can sit in any corner. If both use the same corner, they stack so both stay visible.
         {isVideo && (
-          <> For videos, choose intro &amp; outro only or throughout the main clip per logo.</>
+          <> Company logo defaults to the full main clip; vendor logo can stay intro/outro only or run throughout.</>
         )}
       </p>
 
