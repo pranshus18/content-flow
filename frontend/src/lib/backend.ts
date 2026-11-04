@@ -13,6 +13,9 @@ function apiUrl(path: string): string {
   return `${apiBase()}/api/${clean}`;
 }
 
+/** Render free tier can take 30–90s to cold-start; avoid hanging the UI forever. */
+const API_FETCH_TIMEOUT_MS = 90_000;
+
 type BackendOptions = {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 };
@@ -43,6 +46,7 @@ export async function invokeBackend<T>(
     res = await fetch(url, {
       method,
       cache: 'no-store',
+      signal: AbortSignal.timeout(API_FETCH_TIMEOUT_MS),
       headers: {
         Accept: 'application/json',
         'Cache-Control': 'no-cache',
@@ -51,12 +55,21 @@ export async function invokeBackend<T>(
       },
       ...(sendBody ? { body: JSON.stringify(body ?? {}) } : {}),
     });
-  } catch {
+  } catch (error: unknown) {
+    const timedOut =
+      error instanceof DOMException && error.name === 'TimeoutError';
+    if (timedOut) {
+      throw new Error(
+        'The API is taking too long to respond. On Render free tier the server may be waking up—wait about a minute and refresh.',
+      );
+    }
     const base = apiBase();
     throw new Error(
       base
         ? `Cannot reach the API at ${base}.`
-        : 'Cannot reach the backend. Keep `npm run dev` running so the API on port 8081 is available.',
+        : import.meta.env.PROD
+          ? 'Cannot reach the API. On Vercel set API_PROXY_ORIGIN (see frontend/DEPLOY.md) and redeploy.'
+          : 'Cannot reach the backend. Keep `npm run dev` running so the API on port 8081 is available.',
     );
   }
 

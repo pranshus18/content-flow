@@ -29,8 +29,11 @@ export default function Index() {
 
   if (roleLoading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-2 px-4 text-center">
         <div className="animate-pulse text-muted-foreground">Loading...</div>
+        <p className="text-xs text-muted-foreground max-w-sm">
+          First request after idle may take up to a minute while the API on Render wakes up.
+        </p>
       </div>
     );
   }

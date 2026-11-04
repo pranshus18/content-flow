@@ -36,6 +36,9 @@ function useUserRoleController(): UserRoleContextValue {
 
     const userId = user.id;
     if (lastUserIdRef.current === userId) {
+      if (!fetchingRef.current) {
+        setLoading(false);
+      }
       return;
     }
 

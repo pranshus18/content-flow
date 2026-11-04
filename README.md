@@ -50,22 +50,19 @@ npm run dev:backend
 
 ## Deploy: Vercel (frontend) + Render (backend)
 
-**Render (API only)**
+**Full checklist:** [`frontend/DEPLOY.md`](frontend/DEPLOY.md)
 
-- Root: repo root or `backend/` if you use a backend-only service
-- Build: `npm install` (no frontend build required)
-- Start: `npm run start --prefix backend` or `npm start` from root
-- Env: all keys from `backend/.env.example`
-- Set `FRONTEND_ORIGIN` to your Vercel URL (e.g. `https://your-app.vercel.app`)
-- Leave `SERVE_FRONTEND` unset or `false`
+**Vercel (UI)** — Root Directory: `frontend`
 
-**Vercel (UI)**
+| Variable | Vercel type | Notes |
+|----------|-------------|--------|
+| `VITE_SUPABASE_URL` | **Config** | Same as local `frontend/.env` |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | **Config** | Anon key — not Secret |
+| `API_PROXY_ORIGIN` | Secret or Config | Render URL, e.g. `https://your-service.onrender.com` |
+| `VITE_API_URL` | — | **Do not add** (use proxy above). If you must, use **Config**, not Secret |
 
-- Root Directory: `frontend`
-- Framework: Vite (or use `frontend/vercel.json`)
-- Env: `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`
-- Backend URL — pick one:
-  - **Proxy (easier on Vercel):** leave `VITE_API_URL` unset; set **`API_PROXY_ORIGIN`** = `https://your-service.onrender.com` (no `VITE_` prefix; not exposed to the browser)
-  - **Direct:** set `VITE_API_URL` to the same Render URL (Vercel will warn — confirm it is OK to expose; redeploy)
+Redeploy after changing env vars.
+
+**Render (API)** — Start: `npm run start`; env from `backend/.env.example`; optional `FRONTEND_ORIGIN` = Vercel URL.
 
 Do **not** run `vite` / `npm run dev` on Render or as the Vercel start command — Vercel serves the static `dist` build.
