@@ -58,11 +58,11 @@ npm run dev:backend
 |----------|-------------|--------|
 | `VITE_SUPABASE_URL` | **Config** | Same as local `frontend/.env` |
 | `VITE_SUPABASE_PUBLISHABLE_KEY` | **Config** | Anon key — not Secret |
-| `API_PROXY_ORIGIN` | Secret or Config | Render URL, e.g. `https://your-service.onrender.com` |
-| `VITE_API_URL` | — | **Do not add** (use proxy above). If you must, use **Config**, not Secret |
+| `API_PROXY_ORIGIN` | Secret or Config | Render URL (build maps this to client `VITE_API_URL`) |
+| `VITE_API_URL` | — | **Do not add** in Vercel UI unless you prefer **Config** manually |
 
 Redeploy after changing env vars.
 
-**Render (API)** — Start: `npm run start`; env from `backend/.env.example`; optional `FRONTEND_ORIGIN` = Vercel URL.
+**Render (API)** — Start: `npm run start`; env from `backend/.env.example`; **`FRONTEND_ORIGIN`** = Vercel URL (required for CORS).
 
 Do **not** run `vite` / `npm run dev` on Render or as the Vercel start command — Vercel serves the static `dist` build.

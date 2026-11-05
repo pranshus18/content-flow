@@ -23,6 +23,7 @@ function useUserRoleController(): UserRoleContextValue {
 
   useEffect(() => {
     if (authLoading) {
+      setLoading(true);
       return;
     }
 

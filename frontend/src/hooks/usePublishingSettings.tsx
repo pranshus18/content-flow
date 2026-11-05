@@ -42,6 +42,11 @@ function usePublishingSettingsController(): PublishingContextValue {
       })
       .catch((error: unknown) => {
         console.error('Error fetching settings:', error);
+        toast({
+          title: 'Could not load publishing settings',
+          description: errorMessage(error, 'Check the API connection and try refreshing.'),
+          variant: 'destructive',
+        });
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
