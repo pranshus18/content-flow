@@ -15,10 +15,44 @@ function apiUrl(path: string): string {
 
 /** Render free tier can take 30–90s to cold-start; avoid hanging the UI forever. */
 const API_FETCH_TIMEOUT_MS = 90_000;
+const NETWORK_RETRIES = 4;
+const RETRY_DELAY_MS = 8_000;
 
 type BackendOptions = {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 };
+
+function sleep(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+/** AbortSignal.timeout is missing in some browsers; without this, fetch throws immediately. */
+function timeoutSignal(ms: number): AbortSignal {
+  const AbortSignalCtor = globalThis.AbortSignal as typeof AbortSignal & {
+    timeout?: (ms: number) => AbortSignal;
+  };
+  if (typeof AbortSignalCtor?.timeout === 'function') {
+    return AbortSignalCtor.timeout(ms);
+  }
+  const controller = new AbortController();
+  window.setTimeout(() => controller.abort(), ms);
+  return controller.signal;
+}
+
+function isTimeoutError(error: unknown) {
+  return (
+    error instanceof DOMException &&
+    (error.name === 'TimeoutError' || error.name === 'AbortError')
+  );
+}
+
+function networkErrorMessage(base: string) {
+  return (
+    `Cannot reach the API at ${base}. ` +
+    'This is usually Render waking up (free tier) or a brief network drop—not a wrong password. ' +
+    `Open ${base}/health in a new tab, wait until you see "ok":true, then sign in again.`
+  );
+}
 
 function readErrorMessage(data: unknown, fallback: string) {
   if (data && typeof data === 'object' && 'error' in data) {
@@ -41,32 +75,44 @@ export async function invokeBackend<T>(
   const url = apiUrl(path);
   const sendBody = method !== 'GET' && method !== 'DELETE';
 
-  let res: Response;
-  try {
-    res = await fetch(url, {
-      method,
-      cache: 'no-store',
-      signal: AbortSignal.timeout(API_FETCH_TIMEOUT_MS),
-      headers: {
-        Accept: 'application/json',
-        'Cache-Control': 'no-cache',
-        ...(sendBody ? { 'Content-Type': 'application/json' } : {}),
-        ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
-      },
-      ...(sendBody ? { body: JSON.stringify(body ?? {}) } : {}),
-    });
-  } catch (error: unknown) {
-    const timedOut =
-      error instanceof DOMException && error.name === 'TimeoutError';
-    if (timedOut) {
+  const init: RequestInit = {
+    method,
+    cache: 'no-store',
+    signal: timeoutSignal(API_FETCH_TIMEOUT_MS),
+    headers: {
+      Accept: 'application/json',
+      'Cache-Control': 'no-cache',
+      ...(sendBody ? { 'Content-Type': 'application/json' } : {}),
+      ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+    },
+    ...(sendBody ? { body: JSON.stringify(body ?? {}) } : {}),
+  };
+
+  let res: Response | undefined;
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= NETWORK_RETRIES; attempt += 1) {
+    try {
+      res = await fetch(url, { ...init, signal: timeoutSignal(API_FETCH_TIMEOUT_MS) });
+      lastError = undefined;
+      break;
+    } catch (error: unknown) {
+      lastError = error;
+      if (attempt < NETWORK_RETRIES) {
+        await sleep(RETRY_DELAY_MS);
+      }
+    }
+  }
+
+  if (!res) {
+    const base = apiBase();
+    if (isTimeoutError(lastError)) {
       throw new Error(
         'The API is taking too long to respond. On Render free tier the server may be waking up—wait about a minute and refresh.',
       );
     }
-    const base = apiBase();
     throw new Error(
       base
-        ? `Cannot reach the API at ${base}.`
+        ? networkErrorMessage(base)
         : import.meta.env.PROD
           ? 'Cannot reach the API. On Vercel set API_PROXY_ORIGIN (see frontend/DEPLOY.md) and redeploy.'
           : 'Cannot reach the backend. Keep `npm run dev` running so the API on port 8081 is available.',
@@ -92,6 +138,22 @@ export async function invokeBackend<T>(
   }
 
   return data as T;
+}
+
+/** Ping Render `/health` before login API calls (cold-start on free tier). */
+export async function wakeBackendApi(): Promise<void> {
+  const base = apiBase();
+  if (!base || !import.meta.env.PROD) return;
+  try {
+    await fetch(`${base}/health`, {
+      method: 'GET',
+      cache: 'no-store',
+      signal: timeoutSignal(120_000),
+      headers: { Accept: 'application/json' },
+    });
+  } catch {
+    // Login flow will retry via invokeBackend
+  }
 }
 
 export async function downloadBackend(path: string): Promise<{ blob: Blob; fileName: string }> {

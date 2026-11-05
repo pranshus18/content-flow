@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useToast } from '@/hooks/use-toast';
 import { useNavigate } from 'react-router-dom';
 import { Sparkles, Shield, Eye, EyeOff } from 'lucide-react';
-import { invokeBackend } from '@/lib/backend';
+import { invokeBackend, wakeBackendApi } from '@/lib/backend';
 import { errorMessage } from '@/lib/utils';
 
 const ADMIN_EMAIL = 'admin@contentflow.com';
@@ -59,6 +59,7 @@ export default function AuthPage() {
     setLoading(true);
 
     try {
+      await wakeBackendApi();
       const redirectUrl = `${window.location.origin}/`;
       const { data, error } = await supabase.auth.signUp({ 
         email, 
@@ -105,6 +106,7 @@ export default function AuthPage() {
     setLoading(true);
 
     try {
+      await wakeBackendApi();
       let { error: authError } = await signInWithPassword(email, password);
 
       if (authError?.message.includes('Invalid login credentials') && email.trim().toLowerCase() === ADMIN_EMAIL) {
@@ -163,6 +165,7 @@ export default function AuthPage() {
     setLoading(true);
 
     try {
+      await wakeBackendApi();
       const { error } = await signInWithPassword(email, password);
       if (error) throw error;
       await syncRole();
