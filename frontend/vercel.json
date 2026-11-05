@@ -1,6 +1,11 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "node scripts/generate-vercel-config.mjs && npm install",
   "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "https://content-flow-de2y.onrender.com/api/$1"
+    },
     {
       "source": "/((?!api(?:/|$)).*)",
       "destination": "/index.html"

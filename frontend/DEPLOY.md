@@ -19,7 +19,7 @@
 | `VITE_SUPABASE_PUBLISHABLE_KEY` | **Config** | Supabase anon key |
 | `API_PROXY_ORIGIN` | Secret or Config | `https://YOUR-SERVICE.onrender.com` (no trailing `/`) |
 
-**Do not set `VITE_API_URL` on Vercel** when using `API_PROXY_ORIGIN`. The build keeps the client on **same-origin** `/api/*`; `frontend/api/[...path].ts` proxies to Render (no browser CORS).
+**Do not set `VITE_API_URL` on Vercel** when using `API_PROXY_ORIGIN`. The build keeps the client on **same-origin** `/api/*`; `vercel.json` rewrites proxy to Render (no browser CORS). On each deploy, `scripts/generate-vercel-config.mjs` refreshes the rewrite from `API_PROXY_ORIGIN`.
 
 Redeploy after any env change.
 
