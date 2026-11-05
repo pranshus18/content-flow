@@ -124,7 +124,7 @@ export default function CalendarPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                {loading ? (
+                {loading && contents.length === 0 ? (
                   <div className="text-center py-8 text-muted-foreground">
                     <p className="text-sm">Loading...</p>
                   </div>

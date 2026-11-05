@@ -13,10 +13,14 @@ const rewrites = [];
 
 if (process.env.VERCEL === '1' && origin) {
   rewrites.push({
+    source: '/health',
+    destination: `${origin}/health`,
+  });
+  rewrites.push({
     source: '/api/(.*)',
     destination: `${origin}/api/$1`,
   });
-  console.log(`[vercel-config] /api/* → ${origin}/api/*`);
+  console.log(`[vercel-config] /health + /api/* → ${origin}`);
 } else if (process.env.VERCEL === '1') {
   console.warn('[vercel-config] API_PROXY_ORIGIN missing — add it in Vercel env vars.');
 }

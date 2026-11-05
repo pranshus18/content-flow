@@ -3,6 +3,10 @@
   "installCommand": "node scripts/generate-vercel-config.mjs && npm install",
   "rewrites": [
     {
+      "source": "/health",
+      "destination": "https://content-flow-de2y.onrender.com/health"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "https://content-flow-de2y.onrender.com/api/$1"
     },

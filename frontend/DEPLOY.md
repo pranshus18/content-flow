@@ -56,4 +56,4 @@ Site URL + redirect URLs = your Vercel URL.
 | **CORS error** + `onrender.com` in Network URL | Old deploy — push latest code, redeploy; clear `VITE_API_URL` on Vercel |
 | CORS error + `vercel.app/api` | Check `API_PROXY_ORIGIN`; Render `/health`; Render logs |
 | Blank page | Missing `VITE_SUPABASE_*`, redeploy |
-| 502 on `/api/*` | Set `API_PROXY_ORIGIN` on Vercel |
+| 502 / 503 / 504 / 505 on `/api/*` | Render cold start or timeout — open `/health`, wait for `"ok":true`, retry; ensure `API_PROXY_ORIGIN` is set on Vercel |

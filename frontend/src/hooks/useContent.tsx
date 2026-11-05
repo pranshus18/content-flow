@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useRef, useMemo, type ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeBackend } from '@/lib/backend';
 import { errorMessage } from '@/lib/utils';
@@ -48,60 +48,95 @@ export interface ContentItem {
   updated_at: string;
 }
 
+function contentListSnapshot(items: ContentItem[]): string {
+  return items
+    .map(
+      (c) =>
+        `${c.id}:${c.updated_at}:${c.preprocessing_status}:${c.status}:${c.likes_count}:${c.reach_count}`,
+    )
+    .join('|');
+}
+
 function useContentController() {
   const [contents, setContents] = useState<ContentItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const hasLoadedOnceRef = useRef(false);
+  const lastFetchKeyRef = useRef<string | null>(null);
+  const fetchInFlightRef = useRef(false);
   const { user } = useAuth();
-  const { isAdmin, loading: roleLoading } = useUserRole();
+  const { isAdmin, loading: roleLoading, role } = useUserRole();
   const { toast } = useToast();
 
-  const fetchContents = async () => {
+  const fetchContents = async (options?: { background?: boolean }) => {
     if (!user) return;
-    
+
+    const showBlockingLoader = !hasLoadedOnceRef.current && !options?.background;
+    if (fetchInFlightRef.current) return;
+
     try {
-      setLoading(true);
-      
+      fetchInFlightRef.current = true;
+      if (showBlockingLoader) setLoading(true);
+
       const data = await invokeBackend<ContentItem[]>('content', undefined, { method: 'GET' });
-      setContents(data || []);
+      const next = data || [];
+      setContents((prev) => {
+        if (contentListSnapshot(prev) === contentListSnapshot(next)) return prev;
+        return next;
+      });
     } catch (error: unknown) {
       console.error('Error fetching content:', error);
-      toast({
-        title: 'Error',
-        description: errorMessage(error, 'Failed to load content'),
-        variant: 'destructive',
-      });
+      if (showBlockingLoader) {
+        toast({
+          title: 'Error',
+          description: errorMessage(error, 'Failed to load content'),
+          variant: 'destructive',
+        });
+      }
     } finally {
-      setLoading(false);
+      fetchInFlightRef.current = false;
+      if (user) hasLoadedOnceRef.current = true;
+      if (showBlockingLoader) setLoading(false);
     }
   };
 
   // Fetch content when user is ready AND admin status is determined
   useEffect(() => {
     if (!user) {
-      // No user - clear content
       setContents([]);
       setLoading(false);
+      hasLoadedOnceRef.current = false;
+      lastFetchKeyRef.current = null;
       return;
     }
 
-    if (roleLoading) {
+    if (roleLoading || role === null) {
       return;
     }
 
-    fetchContents();
+    const fetchKey = `${user.id}:${isAdmin ? 'admin' : 'user'}`;
+    if (lastFetchKeyRef.current === fetchKey && hasLoadedOnceRef.current) {
+      return;
+    }
+    lastFetchKeyRef.current = fetchKey;
+
+    void fetchContents();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, isAdmin, roleLoading]);
+  }, [user?.id, isAdmin, roleLoading, role]);
+
+  const hasPendingPreprocessing = useMemo(
+    () => contents.some((item) => item.preprocessing_status === 'pending'),
+    [contents],
+  );
 
   useEffect(() => {
-    const pending = contents.some((item) => item.preprocessing_status === 'pending');
-    if (!user || !pending) return;
+    if (!user || !hasPendingPreprocessing) return;
 
     const timer = window.setInterval(() => {
-      fetchContents().catch(() => {});
+      void fetchContents({ background: true });
     }, 8000);
     return () => window.clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, contents.some((item) => item.preprocessing_status === 'pending')]);
+  }, [user?.id, hasPendingPreprocessing]);
 
   const createContent = async (data: {
     title: string;
@@ -137,7 +172,7 @@ function useContentController() {
       // Refetch content to ensure it's persisted and visible after refresh
       // This ensures content stays after page refresh or logout/login
       setTimeout(() => {
-        fetchContents().catch(err => {
+        fetchContents({ background: true }).catch(err => {
           console.error('Error refetching content after creation:', err);
         });
       }, 500);
@@ -493,7 +528,7 @@ function useContentController() {
         // Also refetch from database to ensure consistency
         // This ensures we get the latest data even if there was a race condition
         setTimeout(() => {
-          fetchContents().catch(err => {
+          fetchContents({ background: true }).catch(err => {
             console.error('Error refetching content after analytics update:', err);
           });
         }, 500);
@@ -562,7 +597,7 @@ function useContentController() {
     preprocessMedia,
     publishToSocial,
     fetchAnalytics,
-    refetch: fetchContents,
+    refetch: () => fetchContents({ background: true }),
   };
 }
 

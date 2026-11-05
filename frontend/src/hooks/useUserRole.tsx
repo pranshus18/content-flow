@@ -23,7 +23,7 @@ function useUserRoleController(): UserRoleContextValue {
 
   useEffect(() => {
     if (authLoading) {
-      setLoading(true);
+      if (!role) setLoading(true);
       return;
     }
 
@@ -36,7 +36,7 @@ function useUserRoleController(): UserRoleContextValue {
     }
 
     const userId = user.id;
-    if (lastUserIdRef.current === userId) {
+    if (lastUserIdRef.current === userId && role) {
       if (!fetchingRef.current) {
         setLoading(false);
       }
@@ -49,7 +49,7 @@ function useUserRoleController(): UserRoleContextValue {
 
     fetchingRef.current = true;
     lastUserIdRef.current = userId;
-    setLoading(true);
+    if (!role) setLoading(true);
 
     invokeBackend<{ role: UserRole }>('me/role', undefined, { method: 'GET' })
       .then((data) => {
@@ -63,13 +63,12 @@ function useUserRoleController(): UserRoleContextValue {
         setLoading(false);
         fetchingRef.current = false;
       });
-  }, [user?.id, authLoading]);
+  }, [user?.id, authLoading, role]);
 
   const refetch = async () => {
     if (!user || fetchingRef.current) return;
 
     fetchingRef.current = true;
-    setLoading(true);
 
     try {
       const data = await invokeBackend<{ role: UserRole }>('me/role', undefined, { method: 'GET' });

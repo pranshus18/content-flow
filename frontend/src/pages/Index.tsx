@@ -95,7 +95,7 @@ export default function Index() {
                 View all history
               </Link>
             </div>
-            {loading ? (
+            {loading && contents.length === 0 ? (
               <p className="text-sm text-muted-foreground">Loading your uploads…</p>
             ) : contents.length === 0 ? (
               <Card className="bg-card border-border">

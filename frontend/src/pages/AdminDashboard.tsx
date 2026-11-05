@@ -198,16 +198,6 @@ export default function AdminDashboard() {
     await refetch();
   };
 
-  // Show loading state - AdminRoute already handles all redirects and role checks
-  // We don't need to check role here again as it causes redirect loops
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="animate-pulse text-muted-foreground">Loading admin dashboard...</div>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-background">
       <Sidebar onCreateClick={() => {}} isAdmin />
@@ -311,7 +301,11 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          {/* Content Tabs */}
+          {loading && contents.length === 0 ? (
+            <div className="py-16 text-center animate-pulse text-muted-foreground">
+              Loading content…
+            </div>
+          ) : (
           <Tabs defaultValue="pending" className="space-y-6">
             <TabsList className="bg-secondary">
               <TabsTrigger value="pending" className="flex gap-2">
@@ -496,6 +490,7 @@ export default function AdminDashboard() {
               )}
             </TabsContent>
           </Tabs>
+          )}
         </div>
       </main>
 

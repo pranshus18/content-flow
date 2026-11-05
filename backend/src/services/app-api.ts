@@ -2,6 +2,7 @@ import { getServiceClient } from '../lib/supabase.js';
 import { getUserRole, requireAdmin } from '../lib/roles.js';
 import { logger } from '../lib/logger.js';
 import { httpError } from '../lib/http.js';
+import { resolveUserEmails } from '../lib/user-emails.js';
 import { preprocessMedia } from './preprocess-media.js';
 
 const contentFields = [
@@ -105,11 +106,12 @@ async function attachUserInfo(rows: ContentRow[]) {
     .in('user_id', userIds);
 
   const profileMap = new Map((profiles || []).map((profile) => [profile.user_id, profile]));
-  const emailMap = new Map<string, string>();
 
-  const { data: users } = await supabase.auth.admin.listUsers({ perPage: 1000 });
-  for (const user of users.users) {
-    if (user.email) emailMap.set(user.id, user.email);
+  let emailMap = new Map<string, string>();
+  try {
+    emailMap = await resolveUserEmails(userIds);
+  } catch (error) {
+    logger.error('content', 'Failed to resolve submitter emails; returning content without emails', error);
   }
 
   return rows.map((row) => {

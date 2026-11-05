@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Sidebar } from '@/components/Sidebar';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { RefreshCw, Users, Search, Mail, User as UserIcon, Shield, ChevronDown, ChevronUp, Image as ImageIcon, Video, Clock, FileText } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/useAuth';
 import { invokeBackend } from '@/lib/backend';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertCircle } from 'lucide-react';
@@ -23,10 +24,16 @@ interface UserWithContent {
   content_count: number;
 }
 
+let cachedUsersList: UserWithContent[] | null = null;
+let cachedUsersOwnerId: string | null = null;
+
 export default function UsersPage() {
-  const [users, setUsers] = useState<UserWithContent[]>([]);
-  const [filteredUsers, setFilteredUsers] = useState<UserWithContent[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
+  const cacheValid = Boolean(user && cachedUsersOwnerId === user.id && cachedUsersList);
+  const [users, setUsers] = useState<UserWithContent[]>(cacheValid ? cachedUsersList! : []);
+  const [filteredUsers, setFilteredUsers] = useState<UserWithContent[]>(cacheValid ? cachedUsersList! : []);
+  const [loading, setLoading] = useState(!cacheValid);
+  const hasLoadedOnceRef = useRef(cacheValid);
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
   const [userContent, setUserContent] = useState<Record<string, ContentItem[]>>({});
@@ -35,12 +42,17 @@ export default function UsersPage() {
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const { toast } = useToast();
 
-  const fetchUsers = async () => {
+  const fetchUsers = async (background = false) => {
+    const showLoader = !hasLoadedOnceRef.current && !background;
     try {
-      setLoading(true);
+      if (showLoader) setLoading(true);
       const data = await invokeBackend<UserWithContent[]>('users', undefined, { method: 'GET' });
-      setUsers(data || []);
-      setFilteredUsers(data || []);
+      const next = data || [];
+      cachedUsersList = next;
+      cachedUsersOwnerId = user?.id ?? null;
+      hasLoadedOnceRef.current = true;
+      setUsers(next);
+      setFilteredUsers(next);
     } catch (error: unknown) {
       console.error('Error fetching users:', error);
       toast({
@@ -49,13 +61,25 @@ export default function UsersPage() {
         variant: 'destructive',
       });
     } finally {
-      setLoading(false);
+      if (showLoader) setLoading(false);
+      hasLoadedOnceRef.current = true;
     }
   };
 
   useEffect(() => {
-    fetchUsers();
-  }, []);
+    if (!user) return;
+    if (cachedUsersOwnerId === user.id && cachedUsersList) {
+      setUsers(cachedUsersList);
+      setFilteredUsers(cachedUsersList);
+      setLoading(false);
+      hasLoadedOnceRef.current = true;
+      return;
+    }
+    cachedUsersList = null;
+    cachedUsersOwnerId = null;
+    hasLoadedOnceRef.current = false;
+    void fetchUsers();
+  }, [user?.id]);
 
   useEffect(() => {
     if (!searchQuery.trim()) {
@@ -150,14 +174,6 @@ export default function UsersPage() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="animate-pulse text-muted-foreground">Loading users...</div>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-background">
       <Sidebar onCreateClick={() => {}} isAdmin />
@@ -196,7 +212,7 @@ export default function UsersPage() {
                 <p className="text-muted-foreground mt-1">View users who have submitted content for posting</p>
               </div>
             </div>
-            <Button variant="outline" onClick={fetchUsers}>
+            <Button variant="outline" onClick={() => void fetchUsers(true)}>
               <RefreshCw className="w-4 h-4 mr-2" />
               Refresh
             </Button>
@@ -226,6 +242,10 @@ export default function UsersPage() {
               </AlertDescription>
             </Alert>
           )}
+
+          {loading && users.length === 0 ? (
+            <div className="py-16 text-center animate-pulse text-muted-foreground">Loading users…</div>
+          ) : null}
 
           {/* Users List */}
           {filteredUsers.length === 0 && users.length > 0 && (

@@ -3,8 +3,9 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import AdminRouteLayout from "./layouts/AdminRouteLayout";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
-import { UserRoleProvider, useUserRole } from "@/hooks/useUserRole";
+import { UserRoleProvider } from "@/hooks/useUserRole";
 import { BrandingSettingsProvider } from "@/hooks/useBrandingSettings";
 import { PublishingSettingsProvider } from "@/hooks/usePublishingSettings";
 import { ContentProvider } from "@/hooks/useContent";
@@ -35,35 +36,6 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     return <Navigate to="/auth" replace />;
   }
 
-  return <>{children}</>;
-}
-
-function AdminRoute({ children }: { children: React.ReactNode }) {
-  const { user, loading: authLoading } = useAuth();
-  const { isAdmin, loading: roleLoading } = useUserRole();
-
-  // Show loading while checking auth or role - don't redirect during loading
-  if (authLoading || roleLoading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="animate-pulse text-muted-foreground">Loading admin access...</div>
-      </div>
-    );
-  }
-
-  // Redirect to auth if not logged in
-  if (!user) {
-    return <Navigate to="/auth" replace />;
-  }
-
-  // Only redirect if role is fully loaded and user is definitely not admin
-  // Wait for roleLoading to be false before making redirect decision
-  if (!roleLoading && !isAdmin) {
-    return <Navigate to="/" replace />;
-  }
-
-  // If we reach here, user is admin (or role is still loading)
-  // AdminRoute only renders children if user is admin
   return <>{children}</>;
 }
 
@@ -121,49 +93,16 @@ const App = () => (
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/admin"
-            element={
-              <AdminRoute>
-                <AdminDashboard />
-              </AdminRoute>
-            }
-          />
-          <Route
-            path="/assets"
-            element={
-              <AdminRoute>
-                <AssetsPage />
-              </AdminRoute>
-            }
-          />
-          <Route
-            path="/users"
-            element={
-              <AdminRoute>
-                <UsersPage />
-              </AdminRoute>
-            }
-          />
+          <Route element={<AdminRouteLayout />}>
+            <Route path="/admin" element={<AdminDashboard />} />
+            <Route path="/assets" element={<AssetsPage />} />
+            <Route path="/users" element={<UsersPage />} />
+            <Route path="/analytics" element={<AnalyticsPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+          </Route>
           <Route
             path="/calendar"
             element={<Navigate to="/admin" replace />}
-          />
-          <Route
-            path="/analytics"
-            element={
-              <AdminRoute>
-                <AnalyticsPage />
-              </AdminRoute>
-            }
-          />
-          <Route
-            path="/settings"
-            element={
-              <AdminRoute>
-                <SettingsPage />
-              </AdminRoute>
-            }
           />
           <Route path="*" element={<NotFound />} />
         </Routes>

@@ -15,8 +15,9 @@ function apiUrl(path: string): string {
 
 /** Render free tier can take 30–90s to cold-start; avoid hanging the UI forever. */
 const API_FETCH_TIMEOUT_MS = 90_000;
-const NETWORK_RETRIES = 4;
-const RETRY_DELAY_MS = 8_000;
+const MAX_ATTEMPTS = 4;
+const RETRY_DELAY_MS = 2_500;
+const RETRYABLE_HTTP = new Set([429, 500, 502, 503, 504, 505]);
 
 type BackendOptions = {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
@@ -62,6 +63,27 @@ function readErrorMessage(data: unknown, fallback: string) {
   return fallback;
 }
 
+function httpFailureMessage(status: number, data: unknown) {
+  const fromBody = readErrorMessage(data, '');
+  if (fromBody) return fromBody;
+  if (status === 502 || status === 503 || status === 504 || status === 505) {
+    return 'The API is temporarily unavailable (often Render waking up). Wait a moment and try again.';
+  }
+  if (status === 429) {
+    return 'Too many requests. Please wait a few seconds and try again.';
+  }
+  return `Backend ${status}`;
+}
+
+function retryDelayMs(res: Response, attempt: number) {
+  const retryAfter = res.headers.get('Retry-After');
+  if (retryAfter) {
+    const seconds = Number.parseInt(retryAfter, 10);
+    if (Number.isFinite(seconds) && seconds > 0) return seconds * 1000;
+  }
+  return RETRY_DELAY_MS * attempt;
+}
+
 export async function invokeBackend<T>(
   path: string,
   body?: unknown,
@@ -88,63 +110,75 @@ export async function invokeBackend<T>(
     ...(sendBody ? { body: JSON.stringify(body ?? {}) } : {}),
   };
 
-  let res: Response | undefined;
   let lastError: unknown;
-  for (let attempt = 1; attempt <= NETWORK_RETRIES; attempt += 1) {
+  let res: Response | undefined;
+  let data: unknown = null;
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
     try {
       res = await fetch(url, { ...init, signal: timeoutSignal(API_FETCH_TIMEOUT_MS) });
       lastError = undefined;
-      break;
     } catch (error: unknown) {
       lastError = error;
-      if (attempt < NETWORK_RETRIES) {
-        await sleep(RETRY_DELAY_MS);
+      res = undefined;
+      if (attempt < MAX_ATTEMPTS) {
+        await sleep(RETRY_DELAY_MS * attempt);
+        continue;
+      }
+      break;
+    }
+
+    const text = await res.text();
+    data = null;
+    if (text) {
+      try {
+        data = JSON.parse(text);
+      } catch {
+        if (!res.ok && attempt < MAX_ATTEMPTS && RETRYABLE_HTTP.has(res.status)) {
+          await sleep(retryDelayMs(res, attempt));
+          continue;
+        }
+        throw new Error(res.ok ? 'Backend returned a non-JSON response' : httpFailureMessage(res.status, null));
       }
     }
+
+    if (res.status === 304) {
+      throw new Error('Backend returned an empty cached response. Refresh the page and try again.');
+    }
+
+    if (res.ok) {
+      return data as T;
+    }
+
+    const canRetry = RETRYABLE_HTTP.has(res.status) && attempt < MAX_ATTEMPTS;
+    if (canRetry) {
+      await sleep(retryDelayMs(res, attempt));
+      continue;
+    }
+
+    throw new Error(httpFailureMessage(res.status, data));
   }
 
-  if (!res) {
-    const base = apiBase();
-    if (isTimeoutError(lastError)) {
-      throw new Error(
-        'The API is taking too long to respond. On Render free tier the server may be waking up—wait about a minute and refresh.',
-      );
-    }
+  const base = apiBase();
+  if (isTimeoutError(lastError)) {
     throw new Error(
-      base
-        ? networkErrorMessage(base)
-        : import.meta.env.PROD
-          ? 'Cannot reach the API. On Vercel set API_PROXY_ORIGIN (see frontend/DEPLOY.md) and redeploy.'
-          : 'Cannot reach the backend. Keep `npm run dev` running so the API on port 8081 is available.',
+      'The API is taking too long to respond. On Render free tier the server may be waking up—wait about a minute and refresh.',
     );
   }
-
-  const text = await res.text();
-  let data: unknown = null;
-  if (text) {
-    try {
-      data = JSON.parse(text);
-    } catch {
-      throw new Error(res.ok ? 'Backend returned a non-JSON response' : `Backend ${res.status}`);
-    }
-  }
-
-  if (res.status === 304) {
-    throw new Error('Backend returned an empty cached response. Refresh the page and try again.');
-  }
-
-  if (!res.ok) {
-    throw new Error(readErrorMessage(data, `Backend ${res.status}`));
-  }
-
-  return data as T;
+  throw new Error(
+    base
+      ? networkErrorMessage(base)
+      : import.meta.env.PROD
+        ? 'Cannot reach the API. On Vercel set API_PROXY_ORIGIN (see frontend/DEPLOY.md) and redeploy.'
+        : 'Cannot reach the backend. Keep `npm run dev` running so the API on port 8081 is available.',
+  );
 }
 
 /** Wake API before login (Render cold start). Uses same-origin /api when proxied on Vercel. */
 export async function wakeBackendApi(): Promise<void> {
   if (!import.meta.env.PROD) return;
   const base = apiBase();
-  const wakeUrl = base ? `${base}/health` : `${window.location.origin}/api/me/role`;
+  const wakeUrl = base ? `${base}/health` : `${window.location.origin}/health`;
   try {
     await fetch(wakeUrl, {
       method: 'GET',

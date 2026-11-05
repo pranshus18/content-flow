@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Sidebar } from '@/components/Sidebar';
+import { CreateContentDialog } from '@/components/CreateContentDialog';
 import { useContent, ContentItem } from '@/hooks/useContent';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -15,7 +16,8 @@ import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 
 export default function HistoryPage() {
-  const { contents, loading, deleteContent } = useContent();
+  const { contents, loading, deleteContent, createContent } = useContent();
+  const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [contentToDelete, setContentToDelete] = useState<ContentItem | null>(null);
   const [imageDialogOpen, setImageDialogOpen] = useState(false);
@@ -40,17 +42,9 @@ export default function HistoryPage() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="animate-pulse text-muted-foreground">Loading...</div>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-background">
-      <Sidebar onCreateClick={() => {}} isAdmin={false} />
+      <Sidebar onCreateClick={() => setDialogOpen(true)} isAdmin={false} />
       
       <main className="pl-64">
         <div className="p-8 max-w-7xl mx-auto">
@@ -65,6 +59,10 @@ export default function HistoryPage() {
             </p>
           </div>
 
+          {loading && allUserContents.length === 0 ? (
+            <div className="py-16 text-center animate-pulse text-muted-foreground">Loading your content…</div>
+          ) : (
+          <>
           {/* Content History with Tabs */}
           <Tabs defaultValue="all" className="space-y-4">
             <TabsList className="bg-secondary">
@@ -173,8 +171,16 @@ export default function HistoryPage() {
               )}
             </TabsContent>
           </Tabs>
+          </>
+          )}
         </div>
       </main>
+
+      <CreateContentDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        onSubmit={(data) => createContent(data)}
+      />
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>

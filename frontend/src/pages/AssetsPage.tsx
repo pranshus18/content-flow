@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/useAuth';
 import { errorMessage } from '@/lib/utils';
 import {
   AdminAsset,
@@ -33,9 +34,15 @@ import {
   Upload,
 } from 'lucide-react';
 
+let cachedAdminAssets: AdminAsset[] | null = null;
+let cachedAssetsOwnerId: string | null = null;
+
 export default function AssetsPage() {
-  const [assets, setAssets] = useState<AdminAsset[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
+  const cacheValid = Boolean(user && cachedAssetsOwnerId === user.id && cachedAdminAssets);
+  const [assets, setAssets] = useState<AdminAsset[]>(cacheValid ? cachedAdminAssets! : []);
+  const [loading, setLoading] = useState(!cacheValid);
+  const hasLoadedOnceRef = useRef(cacheValid);
   const [uploading, setUploading] = useState(false);
   const [filterCategory, setFilterCategory] = useState<AdminAssetCategory | 'all'>('all');
   const [search, setSearch] = useState('');
@@ -43,10 +50,14 @@ export default function AssetsPage() {
   const fileRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
-  const loadAssets = useCallback(async () => {
-    setLoading(true);
+  const loadAssets = useCallback(async (background = false) => {
+    const showLoader = !hasLoadedOnceRef.current && !background;
+    if (showLoader) setLoading(true);
     try {
       const rows = await listAdminAssets();
+      cachedAdminAssets = rows;
+      cachedAssetsOwnerId = user?.id ?? null;
+      hasLoadedOnceRef.current = true;
       setAssets(rows);
     } catch (error: unknown) {
       toast({
@@ -58,13 +69,24 @@ export default function AssetsPage() {
         variant: 'destructive',
       });
     } finally {
-      setLoading(false);
+      if (showLoader) setLoading(false);
+      hasLoadedOnceRef.current = true;
     }
   }, [toast]);
 
   useEffect(() => {
-    loadAssets();
-  }, [loadAssets]);
+    if (!user) return;
+    if (cachedAssetsOwnerId === user.id && cachedAdminAssets) {
+      setAssets(cachedAdminAssets);
+      setLoading(false);
+      hasLoadedOnceRef.current = true;
+      return;
+    }
+    cachedAdminAssets = null;
+    cachedAssetsOwnerId = null;
+    hasLoadedOnceRef.current = false;
+    void loadAssets();
+  }, [user?.id, loadAssets]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -242,12 +264,12 @@ export default function AssetsPage() {
                 ))}
               </SelectContent>
             </Select>
-            <Button type="button" variant="outline" onClick={loadAssets} disabled={loading}>
+            <Button type="button" variant="outline" onClick={() => void loadAssets(true)} disabled={loading && assets.length === 0}>
               Refresh
             </Button>
           </div>
 
-          {loading ? (
+          {loading && assets.length === 0 ? (
             <div className="flex items-center justify-center py-16 text-muted-foreground gap-2">
               <Loader2 className="w-5 h-5 animate-spin" />
               Loading assets…

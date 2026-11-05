@@ -167,7 +167,7 @@ export default function AnalyticsPage() {
             )}
           </div>
 
-          {loading ? (
+          {loading && contents.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">Loading...</div>
           ) : (
             <>
