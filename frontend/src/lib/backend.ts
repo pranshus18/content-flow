@@ -140,19 +140,20 @@ export async function invokeBackend<T>(
   return data as T;
 }
 
-/** Ping Render `/health` before login API calls (cold-start on free tier). */
+/** Wake API before login (Render cold start). Uses same-origin /api when proxied on Vercel. */
 export async function wakeBackendApi(): Promise<void> {
+  if (!import.meta.env.PROD) return;
   const base = apiBase();
-  if (!base || !import.meta.env.PROD) return;
+  const wakeUrl = base ? `${base}/health` : `${window.location.origin}/api/me/role`;
   try {
-    await fetch(`${base}/health`, {
+    await fetch(wakeUrl, {
       method: 'GET',
       cache: 'no-store',
       signal: timeoutSignal(120_000),
       headers: { Accept: 'application/json' },
     });
   } catch {
-    // Login flow will retry via invokeBackend
+    // invokeBackend retries
   }
 }
 

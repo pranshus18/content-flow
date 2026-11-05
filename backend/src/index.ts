@@ -53,14 +53,20 @@ function isAllowedCorsOrigin(origin: string): boolean {
 
 app.use(cors({
   origin(origin, callback) {
-    if (!origin || isAllowedCorsOrigin(origin)) {
+    if (!origin) {
       callback(null, true);
       return;
     }
+    if (isAllowedCorsOrigin(origin)) {
+      callback(null, origin);
+      return;
+    }
+    logger.warn('cors', 'Blocked origin', { origin });
     callback(null, false);
   },
   credentials: true,
   allowedHeaders: ['authorization', 'content-type', 'x-client-info', 'apikey', 'x-cron-secret', 'x-request-id'],
+  exposedHeaders: ['content-disposition', 'x-request-id'],
 }));
 app.use((_req, res, next) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
