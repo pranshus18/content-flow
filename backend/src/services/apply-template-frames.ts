@@ -230,7 +230,7 @@ async function frameForVideo(input: {
   }
 
   const stylePrompt = input.prompt?.trim() || undefined;
-  const wantsAi = Boolean(stylePrompt) || hasLogoOverlays(input.branding);
+  const wantsAi = Boolean(stylePrompt);
   try {
     const generated = await generateTemplateFrame({
       position: input.position,
@@ -291,11 +291,25 @@ export async function applyTemplateFrames(input: ApplyTemplateFramesInput) {
     .limit(1)
     .maybeSingle();
 
-  // Use only this content's frames — never pull old global branding intro/outro onto a new video.
-  let providedIntro = input.introFrameUrl || content.intro_frame_url || null;
-  let providedOutro = input.outroFrameUrl || content.outro_frame_url || null;
-  const hasAnyFramePrompt = Boolean(
-    (input.stylePrompt || input.introPrompt || input.outroPrompt || '').trim(),
+  /** Explicit `null` from the client clears a frame; omit field to keep DB value. */
+  const resolveFrameUrl = (
+    fromInput: string | null | undefined,
+    fromContent: string | null | undefined,
+  ): string | null => {
+    if (fromInput !== undefined) {
+      const trimmed = typeof fromInput === 'string' ? fromInput.trim() : '';
+      return trimmed || null;
+    }
+    return fromContent || null;
+  };
+
+  let providedIntro = resolveFrameUrl(
+    input.introFrameUrl,
+    content.intro_frame_url as string | null | undefined,
+  );
+  let providedOutro = resolveFrameUrl(
+    input.outroFrameUrl,
+    content.outro_frame_url as string | null | undefined,
   );
   // Never inherit corner positions from global branding_settings — only this request / content row.
   const brandingSettings = { ...(branding || {}) } as Record<string, unknown>;
@@ -372,16 +386,11 @@ export async function applyTemplateFrames(input: ApplyTemplateFramesInput) {
     : {};
 
   const overlayEnabled = shouldApplyVideoOverlays(brandingRow);
-  // One Apply click: logos + intro + outro together whenever branding is present.
-  const wantsBrandPackage = Boolean(
-    providedIntro
-    || providedOutro
-    || hasAnyFramePrompt
-    || hasLogoOverlays(brandingRow)
-    || brandingRow.follow_cta_enabled,
-  );
-  const introEnabled = wantsBrandPackage;
-  const outroEnabled = wantsBrandPackage;
+  const introPromptEarly = (input.introPrompt || input.stylePrompt || '').trim() || null;
+  const outroPromptEarly = (input.outroPrompt || input.stylePrompt || '').trim() || null;
+  // Intro/outro only when the user added a frame URL or prompt — never auto-pair with logos alone.
+  const introEnabled = Boolean(providedIntro || introPromptEarly);
+  const outroEnabled = Boolean(providedOutro || outroPromptEarly);
   const needsBrandingBake = introEnabled || outroEnabled || overlayEnabled;
   const shouldProcessVideo = needsBrandingBake || hasBackgroundMusic || clearingMusic;
   const brandingPatch = {
@@ -468,62 +477,7 @@ export async function applyTemplateFrames(input: ApplyTemplateFramesInput) {
   const introPrompt = (input.introPrompt || input.stylePrompt || '').trim() || null;
   const outroPrompt = (input.outroPrompt || input.stylePrompt || '').trim() || null;
 
-  // Fill only missing frames, each with its own prompt — never overwrite a frame the user kept.
-  if (wantsBrandPackage && (!providedIntro || !providedOutro)) {
-    const jobs: Array<Promise<void>> = [];
-    if (!providedIntro) {
-      jobs.push((async () => {
-        try {
-          const generated = await generateTemplateFrame({
-            position: 'intro',
-            contentId: input.contentId,
-            stylePrompt: introPrompt || undefined,
-            prompt: introPrompt || undefined,
-            useAi: Boolean(introPrompt) || hasLogoOverlays(brandingRow),
-            platform: content.platform || undefined,
-            title: content.title || undefined,
-            saveTo: 'none',
-            branding: brandingRow,
-            omitEmbeddedLogos: true,
-          });
-          providedIntro = generated.frameUrl;
-        } catch (error) {
-          logger.warn('apply-template-frames', 'Auto intro generate failed; will fall back per-frame', error);
-        }
-      })());
-    }
-    if (!providedOutro) {
-      jobs.push((async () => {
-        try {
-          const generated = await generateTemplateFrame({
-            position: 'outro',
-            contentId: input.contentId,
-            stylePrompt: outroPrompt || undefined,
-            prompt: outroPrompt || undefined,
-            useAi: Boolean(outroPrompt) || hasLogoOverlays(brandingRow),
-            platform: content.platform || undefined,
-            title: content.title || undefined,
-            saveTo: 'none',
-            branding: brandingRow,
-            omitEmbeddedLogos: true,
-          });
-          providedOutro = generated.frameUrl;
-        } catch (error) {
-          logger.warn('apply-template-frames', 'Auto outro generate failed; will fall back per-frame', error);
-        }
-      })());
-    }
-    if (jobs.length) {
-      logger.info('apply-template-frames', 'Auto-generating only missing intro/outro frames', {
-        contentId: input.contentId,
-        missingIntro: !providedIntro,
-        missingOutro: !providedOutro,
-      });
-      await Promise.all(jobs);
-    }
-  }
-
-  logger.info('apply-template-frames', 'Baking intro + outro into the original video', {
+  logger.info('apply-template-frames', 'Baking video branding', {
     contentId: input.contentId,
     originalUrl: trimUrl(originalUrl),
     introEnabled,
@@ -628,6 +582,8 @@ export async function applyTemplateFrames(input: ApplyTemplateFramesInput) {
 
     const shouldIntro = introEnabled;
     const shouldOutro = outroEnabled;
+    if (!shouldIntro) introFrameUrl = null;
+    if (!shouldOutro) outroFrameUrl = null;
     let introImagePath: string | null = null;
     let outroImagePath: string | null = null;
 
@@ -728,10 +684,10 @@ export async function applyTemplateFrames(input: ApplyTemplateFramesInput) {
     .update({
       media_url: framedUrl,
       enhanced_media_url: framedUrl,
-      intro_frame_url: introFrameUrl,
-      outro_frame_url: outroFrameUrl,
-      intro_frame_duration: introDuration,
-      outro_frame_duration: outroDuration,
+      intro_frame_url: introEnabled ? introFrameUrl : null,
+      outro_frame_url: outroEnabled ? outroFrameUrl : null,
+      intro_frame_duration: introEnabled ? introDuration : null,
+      outro_frame_duration: outroEnabled ? outroDuration : null,
       // Keep the unframed source stable across re-applies so editing never re-wraps a branded file.
       original_media_url: content.original_media_url || content.template_source_url || originalUrl,
       template_source_url: content.template_source_url || content.original_media_url || originalUrl,

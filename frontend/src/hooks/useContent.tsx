@@ -5,6 +5,7 @@ import { errorMessage } from '@/lib/utils';
 import { useAuth } from './useAuth';
 import { useUserRole } from './useUserRole';
 import { useToast } from './use-toast';
+import type { EditorTimeline } from '@/lib/editorTimeline';
 export interface ContentItem {
   id: string;
   user_id: string;
@@ -44,6 +45,8 @@ export interface ContentItem {
   template_frames_applied?: boolean | null;
   background_music_track_id?: string | null;
   background_music_volume?: number | null;
+  editor_timeline?: EditorTimeline | null;
+  editor_timeline_updated_at?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -209,7 +212,7 @@ function useContentController() {
         (mediaUrl?.includes('.mp4') || mediaUrl?.includes('.mov') || mediaUrl?.includes('.webm') || mediaUrl?.includes('video') ? 'video' : 'image');
       
       const mediaTypeText = detectedType === 'video' ? 'video' : 'image';
-      const targetPlatform = platform || 'instagram';
+      const targetPlatform = platform || 'youtube';
       
       // Don't show blocking toast - processing happens in background
       console.log('Starting background preprocessing:', { contentId, mediaUrl: mediaUrl?.substring(0, 50), mediaType: detectedType, platform: targetPlatform });
@@ -394,7 +397,7 @@ function useContentController() {
       toast({
         title: isVideo ? 'Restoring video with Gemini' : 'Restoring photo with Gemini',
         description: isVideo
-          ? 'Sharpening the main clip plus intro and outro to 1080p. This can take a few minutes.'
+          ? 'Each slide is sharpened to match, then the video is rebuilt. This can take several minutes — keep this tab open.'
           : 'Sharpening the photo to 2K. Nothing extra will be added.',
       });
 
@@ -409,15 +412,23 @@ function useContentController() {
           enhancedImageUrl?: string;
           predictionId?: string;
           model?: string;
-        }>('enhance-media', {
-          mediaUrl,
-          mediaType,
-          contentId,
-          predictionId,
-          scale: 2,
-          faceEnhance: true,
-          videoResolution: 'FHD',
-        });
+          notice?: string;
+          usedLocalFallback?: boolean;
+        }>(
+          'enhance-media',
+          {
+            mediaUrl,
+            mediaType,
+            contentId,
+            predictionId,
+            scale: 2,
+            faceEnhance: true,
+            videoResolution: 'FHD',
+          },
+          {
+            timeoutMs: isVideo ? 12 * 60 * 1000 : 5 * 60 * 1000,
+          },
+        );
         if (data?.error && data?.status !== 'processing') {
           throw new Error(data.error);
         }
@@ -430,9 +441,13 @@ function useContentController() {
           });
           toast({
             title: 'Quality enhancement complete',
-            description: isVideo
-              ? 'Intro, main clip, and outro were restored. Preview and download now use the sharp version.'
-              : 'The photo was restored. Preview and download now use the sharp version.',
+            description:
+              data?.notice
+              || (isVideo
+                ? data?.model?.includes('timeline-slides') || data?.model?.includes('slideshow-segments')
+                  ? 'Every slide was sharpened and the video was rebuilt. Preview should look consistent now.'
+                  : 'Intro, main clip, and outro were restored. Preview and download now use the sharp version.'
+                : 'The photo was restored. Preview and download now use the sharp version.'),
           });
           return enhancedUrl as string;
         }

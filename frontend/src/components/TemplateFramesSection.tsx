@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -76,6 +77,10 @@ interface TemplateFramesSectionProps {
   onOutroPromptChange: (value: string) => void;
   backgroundMusicTrackId?: string | null;
   onApplied?: (updated: ContentItem) => void;
+  includeIntro: boolean;
+  includeOutro: boolean;
+  onIncludeIntroChange: (value: boolean) => void;
+  onIncludeOutroChange: (value: boolean) => void;
 }
 
 export function TemplateFramesSection({
@@ -123,13 +128,16 @@ export function TemplateFramesSection({
   onOutroPromptChange,
   backgroundMusicTrackId = null,
   onApplied,
+  includeIntro,
+  includeOutro,
+  onIncludeIntroChange,
+  onIncludeOutroChange,
 }: TemplateFramesSectionProps) {
   const { toast } = useToast();
   const [busy, setBusy] = useState<string | null>(null);
   const [assetPickerTarget, setAssetPickerTarget] = useState<
     'platform_logo' | 'vendor_logo' | 'intro_frame' | 'outro_frame' | null
   >(null);
-
   const hasLogos = Boolean(watermarkLogoUrl || vendorLogoUrl);
   const branding = {
     company_logo_url: watermarkLogoUrl || null,
@@ -177,8 +185,13 @@ export function TemplateFramesSection({
       if (!data?.frameUrl) {
         throw new Error(data?.error || `No ${position} frame was returned.`);
       }
-      if (position === 'intro') onIntroFrameUrlChange(data.frameUrl);
-      else onOutroFrameUrlChange(data.frameUrl);
+      if (position === 'intro') {
+        onIntroFrameUrlChange(data.frameUrl);
+        onIncludeIntroChange(true);
+      } else {
+        onOutroFrameUrlChange(data.frameUrl);
+        onIncludeOutroChange(true);
+      }
       toast({
         title: `${position === 'intro' ? 'Intro' : 'Outro'} generated`,
         description: `Only the ${position} was updated. The other frame is unchanged${data.model ? ` (${data.model})` : ''}.`,
@@ -198,8 +211,13 @@ export function TemplateFramesSection({
     setBusy(`${position}-upload`);
     try {
       const asset = await uploadAdminAsset(file, { category: 'template_frame' });
-      if (position === 'intro') onIntroFrameUrlChange(asset.file_url);
-      else onOutroFrameUrlChange(asset.file_url);
+      if (position === 'intro') {
+        onIntroFrameUrlChange(asset.file_url);
+        onIncludeIntroChange(true);
+      } else {
+        onOutroFrameUrlChange(asset.file_url);
+        onIncludeOutroChange(true);
+      }
       toast({
         title: 'Frame uploaded',
         description: `Custom ${position} is ready. Click Apply once to save it into the video.`,
@@ -222,20 +240,45 @@ export function TemplateFramesSection({
       Boolean(backgroundMusicTrackId)
       || (backgroundMusicTrackId ?? null) !== (content.background_music_track_id ?? null)
     );
-    if (!hasLogos && !introP && !outroP && !introFrameUrl && !outroFrameUrl && !followCtaEnabled && !hasMusicWork) {
+    const wantsIntro = isVideo && includeIntro && (Boolean(introFrameUrl) || Boolean(introP));
+    const wantsOutro = isVideo && includeOutro && (Boolean(outroFrameUrl) || Boolean(outroP));
+
+    if (includeIntro && !introFrameUrl && !introP) {
+      toast({
+        title: 'Intro is enabled but empty',
+        description: 'Generate or upload an intro, or turn off “Add intro to video”.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    if (includeOutro && !outroFrameUrl && !outroP) {
+      toast({
+        title: 'Outro is enabled but empty',
+        description: 'Generate or upload an outro, or turn off “Add outro to video”.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!hasLogos && !wantsIntro && !wantsOutro && !followCtaEnabled && !hasMusicWork) {
       toast({
         title: 'Add branding or music first',
-        description: 'Upload logos, generate intro/outro frames, or pick background music, then Apply.',
+        description: 'Upload logos, enable intro/outro with a frame, or pick background music, then Apply.',
       });
       return;
     }
 
     setBusy('apply');
     try {
+      const parts: string[] = [];
+      if (hasLogos || followCtaEnabled) parts.push('logos');
+      if (wantsIntro) parts.push('intro');
+      if (wantsOutro) parts.push('outro');
+      if (hasMusicWork) parts.push('music');
       toast({
         title: 'Applying branding…',
         description: isVideo
-          ? 'Baking logos, intro, and outro into the video in one pass.'
+          ? `Baking ${parts.join(', ') || 'changes'} into the video.`
           : 'Baking logos into the image.',
       });
       const data = await invokeBackend<{
@@ -244,12 +287,12 @@ export function TemplateFramesSection({
         content?: ContentItem;
       }>('apply-template-frames', {
         contentId: content.id,
-        introFrameUrl: isVideo ? (introFrameUrl || null) : null,
-        outroFrameUrl: isVideo ? (outroFrameUrl || null) : null,
+        introFrameUrl: wantsIntro ? (introFrameUrl || null) : null,
+        outroFrameUrl: wantsOutro ? (outroFrameUrl || null) : null,
         introDuration,
         outroDuration,
-        introPrompt: introP,
-        outroPrompt: outroP,
+        introPrompt: wantsIntro ? introP : null,
+        outroPrompt: wantsOutro ? outroP : null,
         branding,
         platform,
         backgroundMusicTrackId: isVideo ? (backgroundMusicTrackId || null) : undefined,
@@ -263,7 +306,7 @@ export function TemplateFramesSection({
       toast({
         title: isVideo ? 'Video saved' : 'Image saved',
         description: isVideo
-          ? `Branded clip saved with logos, ${introDuration}s intro, and ${outroDuration}s outro. No need to save again.`
+          ? `Branded clip saved${wantsIntro ? ` · ${introDuration}s intro` : ''}${wantsOutro ? ` · ${outroDuration}s outro` : ''}.`
           : 'Branded image saved. No need to save again.',
       });
     } catch (error: unknown) {
@@ -299,9 +342,11 @@ export function TemplateFramesSection({
         break;
       case 'intro_frame':
         onIntroFrameUrlChange(asset.file_url);
+        onIncludeIntroChange(true);
         break;
       case 'outro_frame':
         onOutroFrameUrlChange(asset.file_url);
+        onIncludeOutroChange(true);
         break;
       default:
         break;
@@ -319,21 +364,11 @@ export function TemplateFramesSection({
         <div className="space-y-1 min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <Clapperboard className="w-4 h-4 text-primary" />
-            <Label className="text-base font-semibold">Ready-to-post branding</Label>
+            <Label className="text-base font-semibold">Branding</Label>
             {content.template_frames_applied && (
               <Badge variant="outline" className="text-xs">Applied</Badge>
             )}
           </div>
-          <p className="text-xs text-muted-foreground">
-            {isVideo
-              ? 'Generate intro and outro if you want them, then click Apply to video once — that saves the branded clip.'
-              : 'Set logos here — then Apply once to save the branded image.'}
-          </p>
-          {isVideo && (
-            <p className="text-xs text-foreground">
-              Package: {hasLogos ? 'logos' : 'no logos'} · {introDuration}s intro + {outroDuration}s outro
-            </p>
-          )}
         </div>
         <Button
           type="button"
@@ -426,22 +461,11 @@ export function TemplateFramesSection({
           </Select>
         </div>
       </div>
-      <p className="text-xs text-muted-foreground">
-        Each logo can sit in any corner. If both use the same corner, they stack so both stay visible.
-        {isVideo && (
-          <> Company logo defaults to the full main clip; vendor logo can stay intro/outro only or run throughout.</>
-        )}
-      </p>
 
       <div className="space-y-3 pt-2 border-t border-primary/20">
         <div className="flex items-center justify-between">
           <div>
-            <Label>Repeatable CTA at a particular second</Label>
-            <p className="text-xs text-muted-foreground">
-              {isVideo
-                ? 'Show a CTA at a timestamp, optionally repeating every N seconds.'
-                : 'Baked onto the image.'}
-            </p>
+            <Label>On-screen CTA</Label>
           </div>
           <Switch checked={followCtaEnabled} onCheckedChange={onFollowCtaEnabledChange} disabled={locked} />
         </div>
@@ -506,9 +530,6 @@ export function TemplateFramesSection({
                     disabled={locked}
                     className="bg-secondary border-border"
                   />
-                  <p className="text-xs text-muted-foreground">
-                    Leave empty to show once. Must be longer than “Stay on screen”.
-                  </p>
                 </div>
               </>
             )}
@@ -518,27 +539,12 @@ export function TemplateFramesSection({
 
       {isVideo && (
         <div className="pt-2 border-t border-primary/20 space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs text-muted-foreground">
-              Each side has its own prompt. Regenerate one without changing the other, then Apply once to save.
-            </p>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={apply}
-              disabled={locked}
-              className="flex items-center gap-2"
-            >
-              {busy === 'apply' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-              Apply to video
-            </Button>
-          </div>
-
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <FrameCard
               position="intro"
               heading="Intro"
+              enabled={includeIntro}
+              onEnabledChange={onIncludeIntroChange}
               imageUrl={introFrameUrl}
               duration={introDuration}
               prompt={introPrompt}
@@ -549,11 +555,16 @@ export function TemplateFramesSection({
               onGenerate={() => generateOne('intro')}
               onUpload={uploadFrame}
               onLibraryClick={() => setAssetPickerTarget('intro_frame')}
-              onClear={() => onIntroFrameUrlChange('')}
+              onClear={() => {
+                onIntroFrameUrlChange('');
+                onIncludeIntroChange(false);
+              }}
             />
             <FrameCard
               position="outro"
               heading="Outro"
+              enabled={includeOutro}
+              onEnabledChange={onIncludeOutroChange}
               imageUrl={outroFrameUrl}
               duration={outroDuration}
               prompt={outroPrompt}
@@ -564,7 +575,10 @@ export function TemplateFramesSection({
               onGenerate={() => generateOne('outro')}
               onUpload={uploadFrame}
               onLibraryClick={() => setAssetPickerTarget('outro_frame')}
-              onClear={() => onOutroFrameUrlChange('')}
+              onClear={() => {
+                onOutroFrameUrlChange('');
+                onIncludeOutroChange(false);
+              }}
             />
           </div>
         </div>
@@ -591,6 +605,8 @@ export function TemplateFramesSection({
 function FrameCard({
   position,
   heading,
+  enabled,
+  onEnabledChange,
   imageUrl,
   duration,
   prompt,
@@ -605,6 +621,8 @@ function FrameCard({
 }: {
   position: FramePosition;
   heading: string;
+  enabled: boolean;
+  onEnabledChange: (value: boolean) => void;
   imageUrl: string;
   duration: number;
   prompt: string;
@@ -622,10 +640,13 @@ function FrameCard({
   const generating = busy === `${position}-ai`;
 
   return (
-    <div className="space-y-3 p-3 rounded-lg border border-border bg-background">
-      <div className="flex items-center justify-between">
-        <Label className="text-sm font-semibold">{heading}</Label>
-        <div className="flex items-center gap-2">
+    <div className={cn('space-y-3 p-3 rounded-lg border border-border bg-background min-w-0', !enabled && 'opacity-75')}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <label className="flex items-center gap-2 min-w-0">
+          <Switch checked={enabled} onCheckedChange={onEnabledChange} disabled={locked} />
+          <span className="text-sm font-semibold truncate">Add {heading.toLowerCase()} to video</span>
+        </label>
+        <div className="flex items-center gap-2 shrink-0">
           <Input
             type="number"
             min={0.5}
@@ -633,7 +654,7 @@ function FrameCard({
             step={0.5}
             value={duration}
             onChange={(e) => onDurationChange(Math.min(30, Math.max(0.5, Number(e.target.value) || 0.5)))}
-            disabled={locked}
+            disabled={locked || !enabled}
             className="w-16 h-8 bg-secondary border-border text-xs"
           />
           <span className="text-xs text-muted-foreground">sec</span>
@@ -644,9 +665,7 @@ function FrameCard({
         {imageUrl ? (
           <img src={imageUrl} alt={`${position} template`} className="w-full h-auto max-h-80 object-contain" />
         ) : (
-          <p className="text-xs text-muted-foreground px-4 text-center">
-            No {position} yet. Add a prompt and Generate, or upload.
-          </p>
+          <p className="text-xs text-muted-foreground px-4 text-center">No {position} yet</p>
         )}
       </div>
 
@@ -654,11 +673,11 @@ function FrameCard({
         position={position}
         value={prompt}
         onChange={onPromptChange}
-        disabled={locked}
+        disabled={locked || !enabled}
       />
 
       <div className="flex flex-wrap gap-2">
-        <Button type="button" size="sm" disabled={locked} onClick={onGenerate}>
+        <Button type="button" size="sm" disabled={locked || !enabled} onClick={onGenerate}>
           {generating ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <Wand2 className="w-3.5 h-3.5 mr-1" />}
           Generate {position}
         </Button>
@@ -673,11 +692,11 @@ function FrameCard({
             e.target.value = '';
           }}
         />
-        <Button type="button" variant="outline" size="sm" disabled={locked} onClick={() => fileRef.current?.click()}>
+        <Button type="button" variant="outline" size="sm" disabled={locked || !enabled} onClick={() => fileRef.current?.click()}>
           {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <Upload className="w-3.5 h-3.5 mr-1" />}
           Upload
         </Button>
-        <Button type="button" variant="outline" size="sm" disabled={locked} onClick={onLibraryClick}>
+        <Button type="button" variant="outline" size="sm" disabled={locked || !enabled} onClick={onLibraryClick}>
           <FolderOpen className="w-3.5 h-3.5 mr-1" />
           Library
         </Button>
@@ -801,12 +820,6 @@ function EditLogoField({
           </div>
         </div>
       </div>
-
-      {!value && (
-        <p className="text-xs text-muted-foreground leading-relaxed">
-          Upload a transparent PNG or pick from your asset library.
-        </p>
-      )}
 
       {videoPlacement && (
         <div className="space-y-1.5 pt-1 border-t border-border/50">

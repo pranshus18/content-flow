@@ -16,6 +16,7 @@ import UsersPage from "./pages/UsersPage";
 import AnalyticsPage from "./pages/AnalyticsPage";
 import SettingsPage from "./pages/SettingsPage";
 import AssetsPage from "./pages/AssetsPage";
+import VideoEditorPage from "./pages/VideoEditorPage";
 import AuthPage from "./pages/AuthPage";
 import NotFound from "./pages/NotFound";
 
@@ -99,6 +100,7 @@ const App = () => (
             <Route path="/users" element={<UsersPage />} />
             <Route path="/analytics" element={<AnalyticsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/video-editor" element={<VideoEditorPage />} />
           </Route>
           <Route
             path="/calendar"

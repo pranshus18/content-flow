@@ -7,7 +7,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
-import { Upload, X, Loader2, Instagram, Facebook, Youtube, Calendar as CalendarIcon, Clock } from 'lucide-react';
+import { Upload, X, Loader2, Youtube, Calendar as CalendarIcon, Clock } from 'lucide-react';
+import {
+  ACTIVE_CONTENT_PLATFORMS,
+  ACTIVE_CONTENT_PLATFORM_LABELS,
+  DEFAULT_CONTENT_PLATFORM,
+  coerceActiveContentPlatform,
+} from '@/lib/platforms';
 import { cn, errorMessage } from '@/lib/utils';
 import { ContentItem } from '@/hooks/useContent';
 import { supabase } from '@/integrations/supabase/client';
@@ -40,7 +46,7 @@ export function CreateContentDialog({ open, onOpenChange, onSubmit, editContent,
   const [mediaUrl, setMediaUrl] = useState('');
   const [mediaFile, setMediaFile] = useState<File | null>(null);
   const [mediaType, setMediaType] = useState<'image' | 'video' | null>(null);
-  const [platform, setPlatform] = useState<string>('instagram');
+  const [platform, setPlatform] = useState<string>(DEFAULT_CONTENT_PLATFORM);
   const [scheduledAt, setScheduledAt] = useState<Date | undefined>(initialScheduledDate);
   const [scheduledTime, setScheduledTime] = useState<string>('09:00');
   const [dragActive, setDragActive] = useState(false);
@@ -55,7 +61,7 @@ export function CreateContentDialog({ open, onOpenChange, onSubmit, editContent,
       setTitle(editContent.title);
       setDescription(editContent.description || '');
       setMediaUrl(editContent.media_url || '');
-      setPlatform(editContent.platform);
+      setPlatform(coerceActiveContentPlatform(editContent.platform));
       if (editContent.scheduled_date) {
         const scheduledDate = new Date(editContent.scheduled_date);
         setScheduledAt(scheduledDate);
@@ -224,7 +230,7 @@ export function CreateContentDialog({ open, onOpenChange, onSubmit, editContent,
     setMediaUrl('');
     setMediaFile(null);
     setMediaType(null);
-    setPlatform('instagram');
+    setPlatform(DEFAULT_CONTENT_PLATFORM);
     setScheduledAt(initialScheduledDate);
     setScheduledTime('09:00');
     setUploadProgress(0);
@@ -411,24 +417,14 @@ export function CreateContentDialog({ open, onOpenChange, onSubmit, editContent,
                 <SelectValue placeholder="Select platform for posting" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="instagram">
-                  <div className="flex items-center gap-2">
-                    <Instagram className="w-4 h-4" />
-                    Instagram (1080x1080 - Square)
-                  </div>
-                </SelectItem>
-                <SelectItem value="facebook">
-                  <div className="flex items-center gap-2">
-                    <Facebook className="w-4 h-4" />
-                    Facebook (1200x630 - Link Preview)
-                  </div>
-                </SelectItem>
-                <SelectItem value="youtube">
-                  <div className="flex items-center gap-2">
-                    <Youtube className="w-4 h-4" />
-                    YouTube (1920x1080 - 16:9)
-                  </div>
-                </SelectItem>
+                {ACTIVE_CONTENT_PLATFORMS.map((id) => (
+                  <SelectItem key={id} value={id}>
+                    <div className="flex items-center gap-2">
+                      <Youtube className="w-4 h-4" />
+                      {ACTIVE_CONTENT_PLATFORM_LABELS[id]} (1920×1080 — 16:9)
+                    </div>
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">

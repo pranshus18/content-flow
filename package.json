@@ -6,12 +6,13 @@
     "dev": "concurrently -k -n frontend,backend -c cyan,magenta \"npm run dev --prefix frontend\" \"npm run dev --prefix backend\"",
     "dev:frontend": "npm run dev --prefix frontend",
     "dev:backend": "npm run dev --prefix backend",
-    "build": "npm run build --prefix frontend",
+    "build": "npm run sync:editor-timeline && npm run build --prefix frontend",
     "start": "npm run start --prefix backend",
     "lint": "npm run lint --prefix frontend",
     "preview": "npm run preview --prefix frontend",
     "postinstall": "npm install --prefix frontend && npm install --prefix backend",
-    "music:download": "node scripts/download-music-library.mjs"
+    "music:download": "node scripts/download-music-library.mjs",
+    "sync:editor-timeline": "node scripts/sync-editor-timeline.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.2.5"

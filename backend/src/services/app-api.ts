@@ -4,6 +4,7 @@ import { logger } from '../lib/logger.js';
 import { httpError } from '../lib/http.js';
 import { resolveUserEmails } from '../lib/user-emails.js';
 import { preprocessMedia } from './preprocess-media.js';
+import { parseEditorTimeline } from '../lib/parse-editor-timeline.js';
 
 const contentFields = [
   'title',
@@ -39,6 +40,8 @@ const contentFields = [
   'template_frames_applied',
   'background_music_track_id',
   'background_music_volume',
+  'editor_timeline',
+  'editor_timeline_updated_at',
 ] as const;
 
 const brandingFields = [
@@ -87,8 +90,17 @@ function pickFields<T extends string>(input: Record<string, unknown>, keys: read
   return patch;
 }
 
+function normalizeEditorTimelineField(value: unknown): unknown {
+  if (value == null) return null;
+  return parseEditorTimeline(value);
+}
+
 function pickContentPatch(input: Record<string, unknown>) {
-  return pickFields(input, contentFields);
+  const patch = pickFields(input, contentFields);
+  if ('editor_timeline' in patch) {
+    patch.editor_timeline = normalizeEditorTimelineField(patch.editor_timeline);
+  }
+  return patch;
 }
 
 function readString(value: unknown) {
@@ -163,6 +175,15 @@ export async function createContent(userId: string, input: Record<string, unknow
   else if (mediaUrl) status = 'pending';
 
   const supabase = getServiceClient();
+  const editorTimeline =
+    input.editor_timeline != null ? parseEditorTimeline(input.editor_timeline) : null;
+  const editorTimelineUpdatedAt =
+    typeof input.editor_timeline_updated_at === 'string'
+      ? input.editor_timeline_updated_at
+      : editorTimeline
+        ? new Date().toISOString()
+        : null;
+
   const { data, error } = await supabase
     .from('content')
     .insert({
@@ -176,6 +197,8 @@ export async function createContent(userId: string, input: Record<string, unknow
       original_media_url: mediaUrl,
       status,
       preprocessing_status: mediaUrl ? 'pending' : null,
+      editor_timeline: editorTimeline,
+      editor_timeline_updated_at: editorTimelineUpdatedAt,
     })
     .select()
     .single();

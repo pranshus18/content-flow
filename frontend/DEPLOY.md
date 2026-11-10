@@ -30,7 +30,16 @@ Redeploy after any env change.
 - **Start:** `npm run start`
 - **Env:** `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
 - **`FRONTEND_ORIGIN`:** optional when using Vercel proxy (browser does not call Render directly). Set it if you switch to direct `VITE_API_URL` mode.
-- Apply all `supabase/migrations/`
+- Apply all `supabase/migrations/` (includes `editor_timeline` columns for the video studio)
+- Optional for studio AI tools: `GEMINI_API_KEY` (TTS, translate, image clips), `OPENAI_API_KEY` (auto captions)
+
+---
+
+## Video studio (admin)
+
+1. Run migration `20261105120000_content_editor_timeline.sql` before using **Save timeline**.
+2. Timeline schema lives in `shared/editor-timeline.ts`; deploy runs `npm run sync:editor-timeline` so backend stays in sync.
+3. **Export / render** can run several minutes (ffmpeg on Render). Vercel’s `/api` proxy may time out on long jobs — test with short timelines first, or use direct `VITE_API_URL` + `FRONTEND_ORIGIN` on Render for heavy exports.
 
 ---
 

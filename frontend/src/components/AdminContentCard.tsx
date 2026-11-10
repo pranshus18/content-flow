@@ -234,23 +234,23 @@ export function AdminContentCard({
         )}
       </CardContent>
 
-      <CardFooter className="flex flex-wrap gap-2 pt-2">
+      <CardFooter className="grid grid-cols-2 gap-2 pt-2 min-w-0">
         {onApprove && content.status === 'pending' && (
-          <Button size="sm" onClick={onApprove} className="flex-1">
-            <Check className="w-4 h-4 mr-1" />
-            Approve
+          <Button size="sm" onClick={onApprove} className="min-w-0 col-span-2 sm:col-span-1">
+            <Check className="w-4 h-4 mr-1 shrink-0" />
+            <span className="truncate">Approve</span>
           </Button>
         )}
         {onReject && content.status === 'pending' && (
-          <Button size="sm" variant="outline" onClick={onReject} className="flex-1">
-            <X className="w-4 h-4 mr-1" />
-            Reject
+          <Button size="sm" variant="outline" onClick={onReject} className="min-w-0 col-span-2 sm:col-span-1">
+            <X className="w-4 h-4 mr-1 shrink-0" />
+            <span className="truncate">Reject</span>
           </Button>
         )}
         {showScheduleButton && onSchedule && (content.status === 'approved' || content.status === 'pending') && (
-          <Button size="sm" onClick={onSchedule} variant="outline" className="flex-1">
-            <CalendarIcon className="w-4 h-4 mr-1" />
-            Schedule
+          <Button size="sm" onClick={onSchedule} variant="outline" className="min-w-0">
+            <CalendarIcon className="w-4 h-4 mr-1 shrink-0" />
+            <span className="truncate">Schedule</span>
           </Button>
         )}
         {showPublishButton && onPublish && (content.status === 'approved' || content.status === 'scheduled') && (
@@ -258,11 +258,11 @@ export function AdminContentCard({
             size="sm"
             variant="outline"
             onClick={onPublish}
-            className="flex-1"
+            className="min-w-0"
             disabled={isPublishing || content.preprocessing_status === 'pending'}
           >
-            <Send className={cn('w-4 h-4 mr-1', isPublishing && 'animate-pulse')} />
-            {isPublishing ? 'Publishing…' : 'Publish Now'}
+            <Send className={cn('w-4 h-4 mr-1 shrink-0', isPublishing && 'animate-pulse')} />
+            <span className="truncate">{isPublishing ? 'Publishing…' : 'Publish'}</span>
           </Button>
         )}
         {onEnhanceQuality && content.media_url && (
@@ -271,16 +271,16 @@ export function AdminContentCard({
             variant="outline"
             onClick={onEnhanceQuality}
             disabled={isEnhancing || content.preprocessing_status === 'pending'}
-            className="flex-1"
+            className="min-w-0"
           >
-            <Sparkles className={cn('w-4 h-4 mr-1', isEnhancing && 'animate-spin')} />
-            {isEnhancing ? 'Enhancing...' : 'Enhance Quality'}
+            <Sparkles className={cn('w-4 h-4 mr-1 shrink-0', isEnhancing && 'animate-spin')} />
+            <span className="truncate">{isEnhancing ? 'Enhancing…' : 'Enhance'}</span>
           </Button>
         )}
         {showAnalytics && onRefreshAnalytics && (
-          <Button size="sm" variant="outline" onClick={onRefreshAnalytics} disabled={isRefreshing}>
-            <RefreshCw className={cn('w-4 h-4 mr-1', isRefreshing && 'animate-spin')} />
-            Refresh Stats
+          <Button size="sm" variant="outline" onClick={onRefreshAnalytics} disabled={isRefreshing} className="min-w-0 col-span-2">
+            <RefreshCw className={cn('w-4 h-4 mr-1 shrink-0', isRefreshing && 'animate-spin')} />
+            <span className="truncate">Refresh stats</span>
           </Button>
         )}
         {displayMedia && (
@@ -289,21 +289,22 @@ export function AdminContentCard({
             variant="outline"
             onClick={() => setExportOpen(true)}
             disabled={content.preprocessing_status === 'pending'}
-            className="flex-1"
+            className="min-w-0"
           >
-            <Download className="w-4 h-4 mr-1" />
-            Download
+            <Download className="w-4 h-4 mr-1 shrink-0" />
+            <span className="truncate">Download</span>
           </Button>
         )}
         {onEdit && (
-          <Button size="sm" variant="outline" onClick={onEdit}>
-            <Edit className="w-4 h-4 mr-1" />
-            Edit
+          <Button size="sm" variant="outline" onClick={onEdit} className="min-w-0">
+            <Edit className="w-4 h-4 mr-1 shrink-0" />
+            <span className="truncate">Edit</span>
           </Button>
         )}
         {onDelete && (
-          <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={onDelete}>
-            <Trash2 className="w-4 h-4" />
+          <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive min-w-0 justify-center" onClick={onDelete}>
+            <Trash2 className="w-4 h-4 shrink-0" />
+            <span className="sr-only">Delete</span>
           </Button>
         )}
       </CardFooter>

@@ -1,22 +1,31 @@
 import { useState, useEffect, useRef } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogFullscreenContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeBackend } from '@/lib/backend';
-import { errorMessage } from '@/lib/utils';
-import { Instagram, Facebook, Youtube, Image as ImageIcon, Sparkles, Wand2, Loader2, Download } from 'lucide-react';
+import { cn, errorMessage } from '@/lib/utils';
+import { Youtube, Image as ImageIcon, Wand2, Loader2, Download, Clapperboard, Film } from 'lucide-react';
+import {
+  ACTIVE_CONTENT_PLATFORMS,
+  ACTIVE_CONTENT_PLATFORM_LABELS,
+  DEFAULT_CONTENT_PLATFORM,
+  coerceActiveContentPlatform,
+} from '@/lib/platforms';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { VideoEditorStudio } from '@/components/video-editor/VideoEditorStudio';
+import type { EditorPlatform, EditorTimeline } from '@/lib/editorTimeline';
+import { resolveEditorPlatform } from '@/lib/editorTimeline';
 import { ExportPostDialog } from '@/components/ExportPostDialog';
 import { Input } from '@/components/ui/input';
 import { VideoPlayer } from '@/components/VideoPlayer';
 import { ImageViewer } from '@/components/ImageViewer';
 import { TemplateFramesSection } from '@/components/TemplateFramesSection';
 import { BackgroundMusicSection } from '@/components/BackgroundMusicSection';
-import { ContentItem } from '@/hooks/useContent';
+import { ContentItem, useContent } from '@/hooks/useContent';
 import { uploadAdminAsset } from '@/lib/adminAssets';
 
 interface AdminEditDialogProps {
@@ -51,9 +60,10 @@ interface AdminEditDialogProps {
 }
 
 export function AdminEditDialog({ open, onOpenChange, content, onSave, onContentUpdated }: AdminEditDialogProps) {
+  const { publishToSocial } = useContent();
   const [adminDescription, setAdminDescription] = useState('');
   const [adminNotes, setAdminNotes] = useState('');
-  const [platform, setPlatform] = useState<string>('instagram');
+  const [platform, setPlatform] = useState<string>(DEFAULT_CONTENT_PLATFORM);
   const [generating, setGenerating] = useState(false);
   const [watermarkLogoUrl, setWatermarkLogoUrl] = useState('');
   const [vendorLogoUrl, setVendorLogoUrl] = useState('');
@@ -78,6 +88,9 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
   const [saving, setSaving] = useState(false);
   const [previewMediaUrl, setPreviewMediaUrl] = useState('');
   const [backgroundMusicTrackId, setBackgroundMusicTrackId] = useState<string | null>(null);
+  const [editSection, setEditSection] = useState<'publishing' | 'studio'>('publishing');
+  const [includeIntro, setIncludeIntro] = useState(false);
+  const [includeOutro, setIncludeOutro] = useState(false);
   // True when logos/CTA/frames changed since last successful bake — Apply or Save bakes once.
   const [brandingDirty, setBrandingDirty] = useState(false);
   const { toast } = useToast();
@@ -173,14 +186,15 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
     // Apply-to-video updates the same content record. Do not reset unsaved logos/CTA/frames.
     if (initializedForId.current === content.id) return;
     initializedForId.current = content.id;
+    setEditSection('publishing');
 
     suppressDirtyRef.current = true;
     setAdminDescription(content.admin_description || '');
     setAdminNotes(content.admin_notes || '');
     const normalizedPlatform =
       content.platform === 'twitter' || content.platform === 'linkedin'
-        ? 'instagram'
-        : content.platform || 'instagram';
+        ? DEFAULT_CONTENT_PLATFORM
+        : coerceActiveContentPlatform(content.platform);
     setPlatform(normalizedPlatform);
     setWatermarkLogoUrl(content.watermark_logo_url || '');
     setVendorLogoUrl(content.vendor_logo_url || '');
@@ -196,6 +210,8 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
     setFollowCtaRepeat('');
     setIntroFrameUrl(content.intro_frame_url || '');
     setOutroFrameUrl(content.outro_frame_url || '');
+    setIncludeIntro(Boolean(content.intro_frame_url));
+    setIncludeOutro(Boolean(content.outro_frame_url));
     setIntroDuration(content.intro_frame_duration || 3);
     setOutroDuration(content.outro_frame_duration || 5);
     setIntroPrompt('');
@@ -212,8 +228,10 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
       setPreviewMediaUrl(`${nextMedia}${nextMedia.includes('?') ? '&' : '?'}t=${Date.now()}`);
     }
     suppressDirtyRef.current = true;
-    if (updated.intro_frame_url) setIntroFrameUrl(updated.intro_frame_url);
-    if (updated.outro_frame_url) setOutroFrameUrl(updated.outro_frame_url);
+    setIncludeIntro(Boolean(updated.intro_frame_url));
+    setIncludeOutro(Boolean(updated.outro_frame_url));
+    setIntroFrameUrl(updated.intro_frame_url || '');
+    setOutroFrameUrl(updated.outro_frame_url || '');
     if (updated.intro_frame_duration != null) setIntroDuration(updated.intro_frame_duration);
     if (updated.outro_frame_duration != null) setOutroDuration(updated.outro_frame_duration);
     if (updated.watermark_logo_url != null) setWatermarkLogoUrl(updated.watermark_logo_url || '');
@@ -236,7 +254,6 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
   };
 
   const handleGenerateCaption = async () => {
-    console.log('Generate with AI button clicked!', { content: !!content, hasDescription: !!content?.description });
     
     if (!content) {
       console.error('No content available');
@@ -422,13 +439,13 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
 
       const hasMusicWork = (backgroundMusicTrackId ?? null) !== (content.background_music_track_id ?? null);
       // Only bake when branding changed since last Apply/Save — never re-encode an already-saved video.
+      const wantsIntroBake = includeIntro && Boolean(introFrameUrl || introPrompt.trim());
+      const wantsOutroBake = includeOutro && Boolean(outroFrameUrl || outroPrompt.trim());
       const hasBrandingWork = Boolean(
         watermarkLogoUrl
         || vendorLogoUrl
-        || introFrameUrl
-        || outroFrameUrl
-        || introPrompt.trim()
-        || outroPrompt.trim()
+        || wantsIntroBake
+        || wantsOutroBake
         || followCtaEnabled
         || platformLogoThroughout !== (content.platform_logo_throughout !== false)
         || vendorLogoThroughout !== (content.vendor_logo_throughout === true)
@@ -437,7 +454,7 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
       if (brandingDirty && hasBrandingWork) {
         toast({
           title: 'Saving branded video',
-          description: 'Baking logos, intro, and outro into the media once…',
+          description: 'Baking your selected branding into the media once…',
         });
 
         const data = await invokeBackend<{
@@ -446,12 +463,12 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
           content?: ContentItem;
         }>('apply-template-frames', {
           contentId: content.id,
-          introFrameUrl: introFrameUrl || null,
-          outroFrameUrl: outroFrameUrl || null,
+          introFrameUrl: wantsIntroBake ? (introFrameUrl || null) : null,
+          outroFrameUrl: wantsOutroBake ? (outroFrameUrl || null) : null,
           introDuration,
           outroDuration,
-          introPrompt: introPrompt || null,
-          outroPrompt: outroPrompt || null,
+          introPrompt: wantsIntroBake ? (introPrompt.trim() || null) : null,
+          outroPrompt: wantsOutroBake ? (outroPrompt.trim() || null) : null,
           branding: {
             company_logo_url: watermarkLogoUrl || null,
             vendor_logo_url: vendorLogoUrl || null,
@@ -514,15 +531,72 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
   return (
     <>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[min(920px,calc(100vw-1.5rem))] max-w-none max-h-[90vh] bg-card border-border flex flex-col overflow-hidden">
-          <DialogHeader className="flex-shrink-0">
-          <DialogTitle className="text-xl font-semibold">
-            Edit Content for Publishing
-          </DialogTitle>
-        </DialogHeader>
+      <DialogFullscreenContent className="overflow-hidden">
+        <div className="flex flex-col flex-1 min-h-0 h-full">
+          <DialogHeader className="flex-shrink-0 space-y-0 border-b border-border/70 bg-card/50 backdrop-blur-xl px-4 sm:px-5 py-3 pr-14">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between min-w-0">
+              <div className="min-w-0 pr-2">
+                <DialogTitle className="text-base sm:text-lg font-semibold truncate text-left tracking-tight">
+                  {content.title}
+                </DialogTitle>
+              </div>
+              {isVideo && (
+                <Tabs
+                  value={editSection}
+                  onValueChange={(v) => setEditSection(v as 'publishing' | 'studio')}
+                  className="w-full lg:w-auto shrink-0"
+                >
+                  <TabsList className="grid w-full lg:w-[min(400px,100%)] grid-cols-2 h-10 p-1 bg-secondary/50 border border-border/60">
+                    <TabsTrigger
+                      value="publishing"
+                      className="text-xs sm:text-sm truncate px-2 data-[state=active]:bg-background data-[state=active]:shadow-sm"
+                    >
+                      Publishing
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="studio"
+                      className="text-xs sm:text-sm truncate gap-1.5 px-2 data-[state=active]:bg-background data-[state=active]:shadow-sm"
+                    >
+                      <Film className="w-3.5 h-3.5 shrink-0 opacity-80" />
+                      Video studio
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              )}
+            </div>
+          </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 space-y-5 mt-4">
-          <div className="flex-1 overflow-y-auto pr-2 space-y-5">
+          <div
+            className={cn(
+              'flex-1 min-h-0 flex flex-col overflow-hidden',
+              isVideo && editSection === 'studio' ? 'p-2 sm:p-3 bg-[hsl(222_47%_4%)]' : 'px-4 sm:px-6 py-4',
+            )}
+          >
+        {isVideo && editSection === 'studio' && (
+          <div className="flex-1 min-h-0 flex flex-col">
+            <VideoEditorStudio
+              layout="embedded"
+              fillViewport
+              contentId={content.id}
+              mediaUrl={displayMedia || content.media_url}
+              mediaType={content.media_type}
+              initialPlatform={resolveEditorPlatform(platform)}
+              savedTimeline={(content as ContentItem & { editor_timeline?: EditorTimeline | null }).editor_timeline}
+              replaceOptions={[{ id: content.id, title: content.title, status: content.status }]}
+              linkedContent={content}
+              captionOverride={adminDescription}
+              platformOverride={platform}
+              onPublishContent={publishToSocial}
+              onContentSynced={(updated) => onContentUpdated?.({ ...content, ...updated })}
+              onSaved={() => onContentUpdated?.(content)}
+              onExportComplete={() => onContentUpdated?.(content)}
+            />
+          </div>
+        )}
+
+        {(!isVideo || editSection === 'publishing') && (
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 min-w-0">
+          <div className="flex-1 overflow-y-auto overflow-x-hidden pr-1 space-y-5 min-w-0 pb-4">
           {/* Platform Selection */}
           <div className="space-y-2">
             <Label>Social Media Platform</Label>
@@ -531,35 +605,22 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
                 <SelectValue placeholder="Select platform" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="instagram">
-                  <div className="flex items-center gap-2">
-                    <Instagram className="w-4 h-4" />
-                    Instagram
-                  </div>
-                </SelectItem>
-                <SelectItem value="facebook">
-                  <div className="flex items-center gap-2">
-                    <Facebook className="w-4 h-4" />
-                    Facebook
-                  </div>
-                </SelectItem>
-                <SelectItem value="youtube">
-                  <div className="flex items-center gap-2">
-                    <Youtube className="w-4 h-4" />
-                    YouTube
-                  </div>
-                </SelectItem>
+                {ACTIVE_CONTENT_PLATFORMS.map((id) => (
+                  <SelectItem key={id} value={id}>
+                    <div className="flex items-center gap-2">
+                      <Youtube className="w-4 h-4" />
+                      {ACTIVE_CONTENT_PLATFORM_LABELS[id]}
+                    </div>
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
-            <p className="text-xs text-muted-foreground">
-              Select the platform where this content will be published. Changing platform will re-process the media for optimal dimensions.
-            </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 min-w-0">
             {/* Media Preview */}
             <div className="space-y-2 min-w-0">
-              <Label>Preprocessed Media Preview</Label>
+              <Label>Preview</Label>
               <div className="bg-secondary rounded-lg overflow-hidden">
                 {displayMedia ? (
                   (() => {
@@ -582,8 +643,8 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
                         vendorLogoPosition={vendorLogoPosition}
                         platformLogoThroughout={platformLogoThroughout}
                         vendorLogoThroughout={vendorLogoThroughout}
-                        introFrameUrl={introFrameUrl || undefined}
-                        outroFrameUrl={outroFrameUrl || undefined}
+                        introFrameUrl={includeIntro ? (introFrameUrl || undefined) : undefined}
+                        outroFrameUrl={includeOutro ? (outroFrameUrl || undefined) : undefined}
                         introDuration={introDuration}
                         outroDuration={outroDuration}
                         previewTemplateFrames={!brandingBaked}
@@ -608,18 +669,10 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
                   </div>
                 )}
               </div>
-              <p className="text-sm font-medium">{content.title}</p>
-              {content.enhanced_media_url && (
-                <Badge variant="outline" className="text-xs">
-                  <Sparkles className="w-3 h-3 mr-1" />
-                  Preprocessed & Enhanced
-                </Badge>
-              )}
             </div>
 
-            {/* User's Description */}
             <div className="space-y-2 min-w-0">
-              <Label>User's Original Description</Label>
+              <Label>User description</Label>
               <div className="p-3 bg-secondary rounded-lg min-h-[120px]">
                 <p className="text-sm text-muted-foreground break-words">
                   {content.description || 'No description provided'}
@@ -631,9 +684,7 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
           {/* Admin Description */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label htmlFor="admin-description">
-                Post Caption for {platform.charAt(0).toUpperCase() + platform.slice(1)} *
-              </Label>
+              <Label htmlFor="admin-description">Caption *</Label>
               <Button
                 type="button"
                 variant="outline"
@@ -661,45 +712,18 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
             </div>
             <Textarea
               id="admin-description"
-              placeholder={`Write an optimized caption for ${platform}... (Required - this will be posted, not user description)`}
+              placeholder="Write the caption to publish…"
               value={adminDescription}
               onChange={(e) => setAdminDescription(e.target.value)}
               rows={5}
               className="bg-secondary border-border resize-none"
               required
             />
-            <p className="text-xs text-muted-foreground">
-              ⚠️ This caption will be posted to {platform}. User's description will NOT be posted - only this admin-written caption (including AI-generated captions, which are considered admin-written).
-            </p>
-            <div className="flex items-start gap-2 text-xs text-muted-foreground">
-              <div className="flex-1">
-                <p className="font-medium mb-1">Platform-specific tips:</p>
-                <ul className="list-disc list-inside space-y-0.5">
-                  {platform === 'instagram' && (
-                    <>
-                      <li>Use relevant hashtags (5-10 recommended)</li>
-                      <li>Keep it engaging and visual</li>
-                      <li>Include a call-to-action</li>
-                    </>
-                  )}
-                  {platform === 'facebook' && (
-                    <>
-                      <li>Conversational and friendly tone</li>
-                      <li>Ask questions to encourage engagement</li>
-                      <li>Use 2-3 relevant hashtags</li>
-                    </>
-                  )}
-                </ul>
-              </div>
-            </div>
-            <p className="text-xs text-muted-foreground mt-2">
-              This caption is saved with the {platform} post.
-            </p>
           </div>
 
           {/* Admin Notes */}
           <div className="space-y-2">
-            <Label htmlFor="admin-notes">Internal Notes (not posted)</Label>
+            <Label htmlFor="admin-notes">Internal notes</Label>
             <Textarea
               id="admin-notes"
               placeholder="Add any internal notes about this content..."
@@ -762,30 +786,53 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
             onOutroDurationChange={setOutroDurationTracked}
             onIntroPromptChange={setIntroPromptTracked}
             onOutroPromptChange={setOutroPromptTracked}
+            includeIntro={includeIntro}
+            includeOutro={includeOutro}
+            onIncludeIntroChange={(v) => {
+              setIncludeIntro(v);
+              markBrandingDirty();
+            }}
+            onIncludeOutroChange={(v) => {
+              setIncludeOutro(v);
+              markBrandingDirty();
+            }}
             onApplied={syncAppliedMedia}
           />
 
           </div>
 
-          <DialogFooter className="flex-shrink-0 pt-4 border-t border-border mt-4">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+          <DialogFooter className="flex-shrink-0 flex-wrap gap-2 pt-4 border-t border-border bg-card/80 backdrop-blur -mx-4 sm:-mx-6 px-4 sm:px-6 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={saving} className="min-w-0">
               Cancel
             </Button>
+            {isVideo && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setEditSection('studio')}
+                disabled={saving}
+                className="min-w-0"
+              >
+                <Clapperboard className="w-4 h-4 mr-2 shrink-0" />
+                <span className="truncate">Video studio</span>
+              </Button>
+            )}
             {(content.enhanced_media_url || content.media_url) && (
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => setExportOpen(true)}
                 disabled={saving || content.preprocessing_status === 'pending'}
+                className="min-w-0"
               >
-                <Download className="w-4 h-4 mr-2" />
-                Download for posting
+                <Download className="w-4 h-4 mr-2 shrink-0" />
+                <span className="truncate">Download</span>
               </Button>
             )}
-            <Button type="submit" className="glow" disabled={saving}>
+            <Button type="submit" className="glow min-w-0 sm:ml-auto" disabled={saving}>
               {saving ? (
                 <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin shrink-0" />
                   Saving…
                 </>
               ) : (
@@ -794,7 +841,10 @@ export function AdminEditDialog({ open, onOpenChange, content, onSave, onContent
             </Button>
           </DialogFooter>
         </form>
-      </DialogContent>
+        )}
+          </div>
+        </div>
+      </DialogFullscreenContent>
     </Dialog>
     <ExportPostDialog
       open={exportOpen}

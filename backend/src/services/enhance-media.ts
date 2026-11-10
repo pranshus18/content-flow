@@ -8,13 +8,19 @@ import {
   chunkEntireVideo,
   concatVideos,
   cutVideo,
+  detectSlideshowSegmentBoundaries,
   enhanceVideoQuality,
+  extractSharpestFrameInRange,
+  isMultiSegmentSlideshow,
   muxOriginalAudio,
+  prepareTimelineClipFromFile,
   probeDurationSeconds,
   probeVideo,
   withTempDir,
 } from '../lib/video-tools.js';
 import { applyTemplateFrames } from './apply-template-frames.js';
+import { parseEditorTimeline } from '../lib/parse-editor-timeline.js';
+import type { EditorTimeline, TimelineClip } from '../lib/editor-timeline.js';
 
 const REPLICATE_API = 'https://api.replicate.com/v1';
 const GEMINI_API = 'https://generativelanguage.googleapis.com/v1beta';
@@ -77,6 +83,27 @@ export interface EnhanceResult {
   enhancedMediaUrl?: string;
   enhancedImageUrl?: string;
   httpStatus?: number;
+  /** Shown in UI when Gemini could not run (billing/quota) but local restore completed. */
+  notice?: string;
+  usedLocalFallback?: boolean;
+}
+
+class GeminiBillingError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'GeminiBillingError';
+  }
+}
+
+function isGeminiBillingError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /\(402\)|prepayment credits|depleted|billing|quota exceeded|RESOURCE_EXHAUSTED/i.test(message);
+}
+
+function throwIfGeminiBilling(status: number, message: string): void {
+  if (status === 402 || isGeminiBillingError(message)) {
+    throw new GeminiBillingError(message || `Gemini billing error (${status})`);
+  }
 }
 
 function detectMediaType(url: string, fallback?: MediaType): MediaType {
@@ -438,7 +465,9 @@ async function enhanceImageWithInteractions(
 
   const data = await response.json();
   if (!response.ok) {
-    throw new Error(data?.error?.message || data?.message || `Gemini ${model} failed (${response.status})`);
+    const message = data?.error?.message || data?.message || `Gemini ${model} failed (${response.status})`;
+    throwIfGeminiBilling(response.status, message);
+    throw new Error(message);
   }
 
   const image = extractGeminiImage(data);
@@ -473,7 +502,9 @@ async function enhanceImageWithGenerateContent(
 
   const data = await response.json();
   if (!response.ok) {
-    throw new Error(data?.error?.message || `Gemini ${model} failed (${response.status})`);
+    const message = data?.error?.message || `Gemini ${model} failed (${response.status})`;
+    throwIfGeminiBilling(response.status, message);
+    throw new Error(message);
   }
 
   const image = extractGeminiImage(data);
@@ -483,16 +514,13 @@ async function enhanceImageWithGenerateContent(
   return { ...image, model };
 }
 
-async function enhanceImageWithGemini(apiKey: string, mediaUrl: string, prompt = IMAGE_ENHANCE_PROMPT) {
-  const imageResponse = await fetch(mediaUrl);
-  if (!imageResponse.ok) {
-    throw new Error(`Failed to download source image (${imageResponse.status})`);
-  }
-
-  const mimeType = guessMimeType(mediaUrl, imageResponse.headers.get('content-type'));
-  const bytes = Buffer.from(await imageResponse.arrayBuffer());
+async function enhanceImageBytesWithGemini(
+  apiKey: string,
+  bytes: Buffer,
+  mimeType: string,
+  prompt = IMAGE_ENHANCE_PROMPT,
+) {
   const base64Image = bytes.toString('base64');
-
   const errors: string[] = [];
   for (const model of geminiImageModels()) {
     const apis = model === 'gemini-2.5-flash-image'
@@ -504,6 +532,9 @@ async function enhanceImageWithGemini(apiKey: string, mediaUrl: string, prompt =
         logger.info('enhance-media', `Trying Gemini image model ${model} via ${api.name}`);
         return await api(apiKey, model, mimeType, base64Image, prompt);
       } catch (error) {
+        if (error instanceof GeminiBillingError || isGeminiBillingError(error)) {
+          throw error instanceof GeminiBillingError ? error : new GeminiBillingError(String(error));
+        }
         const message = error instanceof Error ? error.message : String(error);
         logger.warn('enhance-media', `Gemini image model ${model} failed via ${api.name}`, message);
         errors.push(`${model}/${api.name}: ${message}`);
@@ -512,6 +543,17 @@ async function enhanceImageWithGemini(apiKey: string, mediaUrl: string, prompt =
   }
 
   throw new Error(`Gemini image enhancement failed. ${errors.join(' | ')}`);
+}
+
+async function enhanceImageWithGemini(apiKey: string, mediaUrl: string, prompt = IMAGE_ENHANCE_PROMPT) {
+  const imageResponse = await fetch(mediaUrl);
+  if (!imageResponse.ok) {
+    throw new Error(`Failed to download source image (${imageResponse.status})`);
+  }
+
+  const mimeType = guessMimeType(mediaUrl, imageResponse.headers.get('content-type'));
+  const bytes = Buffer.from(await imageResponse.arrayBuffer());
+  return enhanceImageBytesWithGemini(apiKey, bytes, mimeType, prompt);
 }
 
 async function enhanceVideoClipWithGemini(
@@ -839,20 +881,359 @@ async function enhanceVideoLocally(mediaUrl: string) {
   });
 }
 
+async function enhanceImageBytesLocally(sourceBytes: Buffer, aggressive = false) {
+  const sigma = aggressive ? 1.38 : 1.15;
+  const m2 = aggressive ? 0.62 : 0.5;
+  const bytes = await sharp(sourceBytes)
+    .rotate()
+    .normalize()
+    .modulate({ brightness: 1.04, saturation: 1.08 })
+    .sharpen({ sigma, m1: 1.0, m2 })
+    .jpeg({ quality: aggressive ? 94 : 93, mozjpeg: true, chromaSubsampling: '4:4:4' })
+    .toBuffer();
+  return { bytes, mimeType: 'image/jpeg', model: aggressive ? 'local-sharpen-strong' : 'local-sharpen' };
+}
+
+async function fetchImageBytes(imageUrl: string): Promise<{ bytes: Buffer; mimeType: string }> {
+  const imageResponse = await fetch(imageUrl);
+  if (!imageResponse.ok) {
+    throw new Error(`Failed to download source image (${imageResponse.status})`);
+  }
+  const mimeType = guessMimeType(imageUrl, imageResponse.headers.get('content-type'));
+  const bytes = Buffer.from(await imageResponse.arrayBuffer());
+  return { bytes, mimeType };
+}
+
+/** Gemini when available; otherwise local sharpen so slides still match after re-render. */
+async function enhanceImageUrlUnified(
+  imageUrl: string,
+  width: number,
+  height: number,
+  localOnly: boolean,
+): Promise<{ bytes: Buffer; model: string; usedLocalFallback: boolean; geminiBillingBlocked: boolean }> {
+  const { bytes: sourceBytes } = await fetchImageBytes(imageUrl);
+  const geminiKey = env.geminiApiKey;
+  let geminiBillingBlocked = false;
+
+  if (!localOnly && geminiKey) {
+    try {
+      const enhanced = await enhanceImageBytesWithGemini(geminiKey, sourceBytes, guessMimeType(imageUrl), IMAGE_ENHANCE_PROMPT);
+      const bytes = await normalizeEnhancedImageForTimeline(enhanced.bytes, width, height);
+      return { bytes, model: enhanced.model, usedLocalFallback: false, geminiBillingBlocked: false };
+    } catch (error) {
+      if (error instanceof GeminiBillingError || isGeminiBillingError(error)) {
+        geminiBillingBlocked = true;
+        logger.warn('enhance-media', 'Gemini billing/quota unavailable — using local sharpen for this image', error);
+      } else {
+        logger.warn('enhance-media', 'Gemini image restore failed — using local sharpen', error);
+      }
+    }
+  }
+
+  const local = await enhanceImageBytesLocally(sourceBytes, geminiBillingBlocked || localOnly);
+  const bytes = await normalizeEnhancedImageForTimeline(local.bytes, width, height);
+  return {
+    bytes,
+    model: local.model,
+    usedLocalFallback: true,
+    geminiBillingBlocked,
+  };
+}
+
 async function enhanceImageLocally(mediaUrl: string) {
   const imageResponse = await fetch(mediaUrl);
   if (!imageResponse.ok) {
     throw new Error(`Failed to download source image (${imageResponse.status})`);
   }
   const sourceBytes = Buffer.from(await imageResponse.arrayBuffer());
-  const bytes = await sharp(sourceBytes)
+  return enhanceImageBytesLocally(sourceBytes);
+}
+
+async function normalizeEnhancedImageForTimeline(
+  bytes: Buffer,
+  width: number,
+  height: number,
+): Promise<Buffer> {
+  const targetW = Math.max(2, Math.round(width));
+  const targetH = Math.max(2, Math.round(height));
+  return sharp(bytes)
     .rotate()
-    .normalize()
-    .modulate({ brightness: 1.04, saturation: 1.08 })
-    .sharpen({ sigma: 1.15, m1: 1.0, m2: 0.5 })
-    .jpeg({ quality: 93, mozjpeg: true, chromaSubsampling: '4:4:4' })
+    .resize(targetW, targetH, {
+      fit: 'inside',
+      withoutEnlargement: false,
+      kernel: sharp.kernel.lanczos3,
+    })
+    .sharpen({ sigma: 1.12, m1: 1.0, m2: 0.48 })
+    .jpeg({ quality: 94, mozjpeg: true, chromaSubsampling: '4:4:4' })
     .toBuffer();
-  return { bytes, mimeType: 'image/jpeg', model: 'local-sharpen' };
+}
+
+async function enhanceTimelineImageClip(
+  clip: TimelineClip,
+  timeline: EditorTimeline,
+  contentId: string | undefined,
+  localOnly: boolean,
+): Promise<{
+  clip: TimelineClip;
+  model?: string;
+  changed: boolean;
+  usedLocalFallback?: boolean;
+  geminiBillingBlocked?: boolean;
+}> {
+  if (clip.kind !== 'image') {
+    return { clip, changed: false };
+  }
+
+  try {
+    const restored = await enhanceImageUrlUnified(
+      clip.sourceUrl,
+      timeline.width,
+      timeline.height,
+      localOnly,
+    );
+    const storedUrl = await storeEnhancedBytes(restored.bytes, contentId, 'image', 'image/jpeg');
+    logger.info('enhance-media', 'Restored editor slide source', {
+      clipId: clip.id,
+      model: restored.model,
+      localFallback: restored.usedLocalFallback,
+      source: trimUrl(clip.sourceUrl),
+      stored: trimUrl(storedUrl),
+    });
+    return {
+      clip: { ...clip, sourceUrl: storedUrl },
+      model: restored.model,
+      changed: true,
+      usedLocalFallback: restored.usedLocalFallback,
+      geminiBillingBlocked: restored.geminiBillingBlocked,
+    };
+  } catch (error) {
+    logger.warn('enhance-media', `Slide restore failed for clip ${clip.id}, keeping original source`, error);
+    return { clip, changed: false };
+  }
+}
+
+async function enhanceOneSlideFrame(
+  framePath: string,
+  width: number,
+  height: number,
+  localOnly: boolean,
+): Promise<{ bytes: Buffer; model: string } | null> {
+  try {
+    const sourceBytes = await readFile(framePath);
+    const geminiKey = env.geminiApiKey;
+    let geminiBillingBlocked = false;
+    if (!localOnly && geminiKey) {
+      try {
+        const enhanced = await enhanceImageBytesWithGemini(geminiKey, sourceBytes, 'image/png', IMAGE_ENHANCE_PROMPT);
+        const bytes = await normalizeEnhancedImageForTimeline(enhanced.bytes, width, height);
+        return { bytes, model: enhanced.model };
+      } catch (error) {
+        if (error instanceof GeminiBillingError || isGeminiBillingError(error)) {
+          geminiBillingBlocked = true;
+        }
+        logger.warn('enhance-media', 'Slide frame Gemini restore failed, using local sharpen', error);
+      }
+    }
+    const local = await enhanceImageBytesLocally(sourceBytes, geminiBillingBlocked || localOnly);
+    const bytes = await normalizeEnhancedImageForTimeline(local.bytes, width, height);
+    return { bytes, model: local.model };
+  } catch (error) {
+    logger.warn('enhance-media', 'Slide frame restore failed', error);
+    return null;
+  }
+}
+
+/** Multi-slide MP4 (no editor timeline): detect each slide, restore with Gemini, rebuild with one encode recipe. */
+async function enhanceVideoSlideshowUniform(
+  mediaUrl: string,
+  contentId: string | undefined,
+  localOnly: boolean,
+): Promise<{ bytes: Buffer; mimeType: string; model: string } | null> {
+  return withTempDir(async (dir) => {
+    const sourcePath = path.join(dir, 'source.mp4');
+    if (mediaUrl.startsWith('file://') || (!mediaUrl.startsWith('http') && path.isAbsolute(mediaUrl))) {
+      const localPath = mediaUrl.replace(/^file:\/\//, '');
+      await writeFile(sourcePath, await readFile(localPath));
+    } else {
+      const videoResponse = await fetch(mediaUrl);
+      if (!videoResponse.ok) {
+        throw new Error(`Failed to download source video (${videoResponse.status})`);
+      }
+      await writeFile(sourcePath, Buffer.from(await videoResponse.arrayBuffer()));
+    }
+
+    const probe = await probeVideo(sourcePath);
+    const boundaries = await detectSlideshowSegmentBoundaries(sourcePath);
+    if (!isMultiSegmentSlideshow(boundaries, probe.duration)) {
+      return null;
+    }
+
+    logger.info('enhance-media', 'Uniform restore for multi-slide video', {
+      contentId,
+      segments: boundaries.length - 1,
+      boundaries,
+      width: probe.width,
+      height: probe.height,
+    });
+
+    const format = {
+      width: probe.width,
+      height: probe.height,
+      fps: probe.fps,
+      withAudio: false,
+    };
+    const models: string[] = [];
+    const segmentPaths: string[] = [];
+
+    for (let i = 0; i < boundaries.length - 1; i += 1) {
+      const start = boundaries[i];
+      const end = boundaries[i + 1];
+      const durationSeconds = Math.max(0.1, end - start);
+      const framePath = path.join(dir, `slide-${i}.png`);
+      const imagePath = path.join(dir, `slide-${i}-enh.jpg`);
+      const segPath = path.join(dir, `seg-${i}.mp4`);
+
+      await extractSharpestFrameInRange(sourcePath, framePath, start, end);
+      let enhanced = await enhanceOneSlideFrame(framePath, probe.width, probe.height, localOnly);
+      if (!enhanced) {
+        logger.warn('enhance-media', `Gemini failed on segment ${i + 1}; using local sharpen on extracted frame`);
+        const fallback = await enhanceImageBytesLocally(await readFile(framePath));
+        enhanced = {
+          bytes: await normalizeEnhancedImageForTimeline(fallback.bytes, probe.width, probe.height),
+          model: fallback.model,
+        };
+      }
+      models.push(enhanced.model);
+      await writeFile(imagePath, enhanced.bytes);
+
+      await prepareTimelineClipFromFile(
+        imagePath,
+        segPath,
+        {
+          kind: 'image',
+          durationSeconds,
+          kenBurns: { enabled: false },
+        },
+        format,
+      );
+      segmentPaths.push(segPath);
+    }
+
+    const composedPath = path.join(dir, 'composed.mp4');
+    await concatVideos(segmentPaths, composedPath, false);
+
+    let withAudioPath = composedPath;
+    if (probe.hasAudio) {
+      withAudioPath = path.join(dir, 'with-audio.mp4');
+      await muxOriginalAudio(composedPath, sourcePath, withAudioPath);
+    }
+
+    const finalizedPath = path.join(dir, 'final.mp4');
+    await enhanceVideoQuality(withAudioPath, finalizedPath);
+
+    return {
+      bytes: await readFile(finalizedPath),
+      mimeType: 'video/mp4',
+      model: `slideshow-segments:${models.join('+')}`,
+    };
+  });
+}
+
+async function tryEnhanceViaSlideshowSegments(
+  body: EnhanceRequest,
+  mediaUrl: string,
+  rewrapIntroOutro: boolean,
+): Promise<EnhanceResult | null> {
+  try {
+    const enhanced = await enhanceVideoSlideshowUniform(mediaUrl, body.contentId, Boolean(body.localOnly));
+    if (!enhanced) return null;
+    const storedUrl = await storeEnhancedBytes(enhanced.bytes, body.contentId, 'video', enhanced.mimeType);
+    return await persistFinalVideo(body.contentId, storedUrl, rewrapIntroOutro, 'gemini', enhanced.model);
+  } catch (error) {
+    logger.warn('enhance-media', 'Slideshow segment restore failed, trying next path', error);
+    return null;
+  }
+}
+
+/** Photo slideshows: sharpen each timeline image, then re-export so every slide matches. */
+async function tryEnhanceViaEditorTimeline(body: EnhanceRequest): Promise<EnhanceResult | null> {
+  if (!body.contentId || body.localOnly) return null;
+
+  const { data: content, error } = await getServiceClient()
+    .from('content')
+    .select('user_id, editor_timeline, intro_frame_url, outro_frame_url')
+    .eq('id', body.contentId)
+    .maybeSingle();
+  if (error || !content?.editor_timeline || !content.user_id) return null;
+
+  let timeline: EditorTimeline;
+  try {
+    timeline = parseEditorTimeline(content.editor_timeline);
+  } catch {
+    return null;
+  }
+
+  const imageCount = timeline.clips.filter((c) => c.kind === 'image').length;
+  if (imageCount === 0) return null;
+
+  logger.info('enhance-media', 'Restoring each editor slide before re-render', {
+    contentId: body.contentId,
+    imageClips: imageCount,
+    width: timeline.width,
+    height: timeline.height,
+  });
+
+  const models: string[] = [];
+  let anyChanged = false;
+  let usedLocalFallback = false;
+  let geminiBillingBlocked = false;
+  const clips: TimelineClip[] = [];
+  for (const clip of timeline.clips) {
+    const result = await enhanceTimelineImageClip(clip, timeline, body.contentId, Boolean(body.localOnly));
+    clips.push(result.clip);
+    if (result.changed) anyChanged = true;
+    if (result.model) models.push(result.model);
+    if (result.usedLocalFallback) usedLocalFallback = true;
+    if (result.geminiBillingBlocked) geminiBillingBlocked = true;
+  }
+
+  if (!anyChanged) {
+    logger.warn('enhance-media', 'No editor slides could be restored; falling back to whole-video enhance');
+    return null;
+  }
+
+  const billingNotice = geminiBillingBlocked
+    ? 'Gemini prepay credits are depleted. Slides were sharpened locally and the video was rebuilt — add billing in Google AI Studio for full AI restore.'
+    : usedLocalFallback
+      ? 'Some slides used local sharpening because Gemini was unavailable.'
+      : undefined;
+
+  const updatedTimeline: EditorTimeline = { ...timeline, clips };
+  const { renderAndExportTimeline } = await import('./render-timeline.js');
+  const rendered = await renderAndExportTimeline({
+    userId: String(content.user_id),
+    timeline: updatedTimeline,
+    exportMode: 'replace',
+    contentId: body.contentId,
+  });
+
+  if (!rendered.mediaUrl) return null;
+
+  const rewrapIntroOutro = Boolean(content.intro_frame_url || content.outro_frame_url);
+  const finalUrl = rewrapIntroOutro
+    ? await finishVideoWithIntroOutro(body.contentId, rendered.mediaUrl)
+    : rendered.mediaUrl;
+
+  return {
+    status: 'completed',
+    success: true,
+    enhancedMediaUrl: finalUrl,
+    enhancedImageUrl: finalUrl,
+    provider: usedLocalFallback ? 'sharp' : 'gemini',
+    model: models.length ? `timeline-slides:${models.join('+')}` : 'timeline-rerender',
+    notice: billingNotice,
+    usedLocalFallback,
+  };
 }
 
 async function persistFinalVideo(
@@ -918,6 +1299,16 @@ export async function enhanceMedia(body: EnhanceRequest): Promise<EnhanceResult>
   });
 
   if (mediaType === 'video') {
+    const timelineResult = await tryEnhanceViaEditorTimeline(body);
+    if (timelineResult?.success) {
+      return timelineResult;
+    }
+
+    const slideshowResult = await tryEnhanceViaSlideshowSegments(body, mediaUrl, rewrapIntroOutro);
+    if (slideshowResult?.success) {
+      return slideshowResult;
+    }
+
     if (!body.localOnly && geminiKey) {
       try {
         const enhanced = await enhanceVideoWithGemini(geminiKey, mediaUrl, body.videoResolution || 'FHD');
@@ -948,22 +1339,27 @@ export async function enhanceMedia(body: EnhanceRequest): Promise<EnhanceResult>
     return await persistFinalVideo(body.contentId, storedUrl, rewrapIntroOutro, 'ffmpeg', enhanced.model);
   }
 
-  if (!body.localOnly && geminiKey) {
-    try {
-      const enhanced = await enhanceImageWithGemini(geminiKey, mediaUrl);
-      const storedUrl = await storeEnhancedBytes(enhanced.bytes, body.contentId, 'image', enhanced.mimeType);
+  try {
+      const restored = await enhanceImageUrlUnified(mediaUrl, 2048, 2048, Boolean(body.localOnly));
+      const storedUrl = await storeEnhancedBytes(restored.bytes, body.contentId, 'image', 'image/jpeg');
       await persistEnhanceResult(body.contentId, storedUrl);
+      const billingNotice = restored.geminiBillingBlocked
+        ? 'Gemini prepay credits are depleted. Photo was sharpened locally — add billing in Google AI Studio for full AI restore.'
+        : restored.usedLocalFallback
+          ? 'Photo was sharpened locally because Gemini was unavailable.'
+          : undefined;
       return {
         status: 'completed',
         success: true,
         enhancedMediaUrl: storedUrl,
         enhancedImageUrl: storedUrl,
-        provider: 'gemini',
-        model: enhanced.model,
+        provider: restored.usedLocalFallback ? 'sharp' : 'gemini',
+        model: restored.model,
+        notice: billingNotice,
+        usedLocalFallback: restored.usedLocalFallback,
       };
-    } catch (error) {
-      logger.warn('enhance-media', 'Gemini photo restore failed, trying fallback', error);
-    }
+  } catch (error) {
+    logger.warn('enhance-media', 'Unified photo restore failed, trying fallback', error);
   }
 
   if (!body.localOnly && replicateToken) {

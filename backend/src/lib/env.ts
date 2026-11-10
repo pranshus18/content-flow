@@ -31,6 +31,7 @@ export const env = {
   geminiImageModel: read('GEMINI_IMAGE_MODEL', 'gemini-nano-banana-2.1'),
   geminiVideoModel: read('GEMINI_VIDEO_MODEL', 'gemini-omni-1.1-flash'),
   geminiTextModel: read('GEMINI_TEXT_MODEL', 'gemini-3.8-flash'),
+  geminiTtsModel: read('GEMINI_TTS_MODEL', 'gemini-2.5-flash-preview-tts'),
   openRouterApiKey: read('OPENROUTER_API_KEY'),
   openaiApiKey: read('OPENAI_API_KEY'),
   replicateApiToken: read('REPLICATE_API_TOKEN'),

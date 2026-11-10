@@ -21,6 +21,8 @@ const RETRYABLE_HTTP = new Set([429, 500, 502, 503, 504, 505]);
 
 type BackendOptions = {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+  /** Default 90s; use 10–12 min for video render endpoints. */
+  timeoutMs?: number;
 };
 
 function sleep(ms: number) {
@@ -96,11 +98,12 @@ export async function invokeBackend<T>(
   const method = options.method || (body === undefined ? 'GET' : 'POST');
   const url = apiUrl(path);
   const sendBody = method !== 'GET' && method !== 'DELETE';
+  const timeoutMs = options.timeoutMs ?? API_FETCH_TIMEOUT_MS;
 
   const init: RequestInit = {
     method,
     cache: 'no-store',
-    signal: timeoutSignal(API_FETCH_TIMEOUT_MS),
+    signal: timeoutSignal(timeoutMs),
     headers: {
       Accept: 'application/json',
       'Cache-Control': 'no-cache',
@@ -116,7 +119,7 @@ export async function invokeBackend<T>(
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
     try {
-      res = await fetch(url, { ...init, signal: timeoutSignal(API_FETCH_TIMEOUT_MS) });
+      res = await fetch(url, { ...init, signal: timeoutSignal(timeoutMs) });
       lastError = undefined;
     } catch (error: unknown) {
       lastError = error;

@@ -32,8 +32,8 @@ applyTemplateFramesRouter.post('/', asyncHandler(async (req: AuthedRequest, res)
     : null;
   const result = await applyTemplateFrames({
     contentId,
-    introFrameUrl: typeof req.body?.introFrameUrl === 'string' ? req.body.introFrameUrl : undefined,
-    outroFrameUrl: typeof req.body?.outroFrameUrl === 'string' ? req.body.outroFrameUrl : undefined,
+    introFrameUrl: 'introFrameUrl' in (req.body ?? {}) ? asOptionalString(req.body.introFrameUrl) : undefined,
+    outroFrameUrl: 'outroFrameUrl' in (req.body ?? {}) ? asOptionalString(req.body.outroFrameUrl) : undefined,
     introDuration: typeof req.body?.introDuration === 'number' ? req.body.introDuration : undefined,
     outroDuration: typeof req.body?.outroDuration === 'number' ? req.body.outroDuration : undefined,
     stylePrompt: asOptionalString(req.body?.stylePrompt),

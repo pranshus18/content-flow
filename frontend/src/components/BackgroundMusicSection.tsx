@@ -15,8 +15,6 @@ import {
   backgroundMusicPreviewUrl,
   formatTrackDuration,
   loadBackgroundMusicCatalog,
-  loadBackgroundMusicCatalogMeta,
-  backgroundMusicAttributionLine,
   isAdminAssetMusicTrackId,
   parseAdminAssetMusicTrackId,
   toAdminAssetMusicTrackId,
@@ -48,7 +46,6 @@ export function BackgroundMusicSection({
   disabled = false,
 }: BackgroundMusicSectionProps) {
   const catalog = useMemo(() => loadBackgroundMusicCatalog(), []);
-  const catalogMeta = useMemo(() => loadBackgroundMusicCatalogMeta(), []);
   const [category, setCategory] = useState<string>('All');
   const [query, setQuery] = useState('');
   const [playingId, setPlayingId] = useState<string | null>(null);
@@ -221,11 +218,6 @@ export function BackgroundMusicSection({
           <Label className="text-base font-semibold">Background music</Label>
           <Badge variant="secondary" className="text-[10px]">Library · CC BY 4.0</Badge>
         </div>
-        <p className="text-xs text-muted-foreground leading-relaxed">
-          Pick a royalty-free track below, or upload your own MP3/audio. Preview, select, then Apply to bake into the
-          video.
-          {catalogMeta.licenseNotice ? ` ${catalogMeta.licenseNotice}` : ''}
-        </p>
       </div>
 
       {activePreviewUrl && playingId && (
@@ -283,23 +275,13 @@ export function BackgroundMusicSection({
               None
             </Button>
           </div>
-          {selectedCatalogTrack ? (
-            <p className="text-[11px] text-muted-foreground leading-snug px-1">
-              {backgroundMusicAttributionLine(selectedCatalogTrack)} — paste into your post caption when publishing.
-            </p>
-          ) : (
-            <p className="text-[11px] text-muted-foreground leading-snug px-1">
-              Custom upload — ensure you have rights to use this music when publishing.
-            </p>
-          )}
         </div>
       )}
 
       <div className="rounded-md border border-border bg-background/60 p-3 space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <div>
-            <p className="text-sm font-medium">Your music uploads</p>
-            <p className="text-xs text-muted-foreground">Use when nothing in the library fits.</p>
+            <p className="text-sm font-medium">Your uploads</p>
           </div>
           <input
             ref={uploadInputRef}

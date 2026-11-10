@@ -26,6 +26,8 @@ import { generateTemplateFrameRouter } from './routes/generate-template-frame.js
 import { applyTemplateFramesRouter } from './routes/apply-template-frames.js';
 import { backgroundMusicRouter } from './routes/background-music.js';
 import { adminAssetsRouter } from './routes/admin-assets.js';
+import { renderTimelineRouter } from './routes/render-timeline.js';
+import { editorAiRouter } from './routes/editor-ai.js';
 import { publishContent } from './services/publish-content.js';
 
 const app = express();
@@ -100,6 +102,8 @@ app.use('/api/generate-template-frame', requireAuth, requireAdminUser, generateT
 app.use('/api/apply-template-frames', requireAuth, requireAdminUser, applyTemplateFramesRouter);
 app.use('/api/background-music', requireAuth, requireAdminUser, backgroundMusicRouter);
 app.use('/api/admin-assets', requireAuth, requireAdminUser, adminAssetsRouter);
+app.use('/api/render-timeline', requireAuth, requireAdminUser, renderTimelineRouter);
+app.use('/api/editor-ai', requireAuth, requireAdminUser, editorAiRouter);
 app.use('/api/preprocess-media', requireAuth, requireAdminUser, preprocessMediaRouter);
 app.use('/api/enhance-media', requireAuth, requireAdminUser, enhanceMediaRouter);
 app.use('/api/publish-social', requireAuth, requireAdminUser, publishSocialRouter);

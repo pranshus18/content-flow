@@ -9,6 +9,7 @@ import {
   History,
   Users,
   FolderOpen,
+  Clapperboard,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { NavLink } from '@/components/NavLink';
@@ -29,6 +30,7 @@ const userNavItems = [
 const adminNavItems = [
   { icon: Shield, label: 'Admin Dashboard', path: '/admin' },
   { icon: FolderOpen, label: 'Assets', path: '/assets' },
+  { icon: Clapperboard, label: 'Video Editor', path: '/video-editor' },
   { icon: Users, label: 'Users', path: '/users' },
   { icon: BarChart3, label: 'Analytics', path: '/analytics' },
   { icon: Settings, label: 'Settings', path: '/settings' },
